@@ -1,0 +1,23 @@
+{
+  "name": "aetherfall",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "build": "node tools/build-single.mjs",
+    "serve": "python3 tools/server.py",
+    "verify": "node tools/verify-single.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "puppeteer": "^25.8.0",
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "pngjs": "^7.0.0"
+  }
+}

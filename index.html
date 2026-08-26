@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AETHERFALL — Whispers of the Sunken Starlace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Alegreya:ital,wght@0,500;1,400&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a1420; }
+    #app canvas { display: block; }
+    #ui { position: fixed; inset: 0; pointer-events: none;
+          font-family: 'Alegreya', serif; color: #f2ead6; z-index: 10; }
+    #ui button { pointer-events: auto; cursor: pointer; }
+
+    .hidden { display: none !important; }
+
+    /* ---------- title ---------- */
+    #title-screen {
+      position: absolute; inset: 0; pointer-events: auto;
+      display: flex; align-items: center; justify-content: center;
+      background:
+        radial-gradient(ellipse at 50% 30%, rgba(20,45,75,0.25), rgba(6,14,26,0.88)),
+        linear-gradient(180deg, #10243c 0%, #0a1626 100%);
+    }
+    .title-inner { text-align: center; max-width: 720px; padding: 24px; animation: fadeIn 1.4s ease both; }
+    .title-eyebrow {
+      font-family: 'Cinzel', serif; letter-spacing: 0.55em; text-transform: uppercase;
+      font-size: 11px; color: #9db8d4; margin-bottom: 18px;
+    }
+    .title-inner h1 {
+      font-family: 'Cinzel', serif; font-weight: 700; font-size: clamp(52px, 9vw, 96px);
+      letter-spacing: 0.16em; line-height: 1;
+      background: linear-gradient(180deg, #fdf6e3 15%, #e8cf8f 50%, #b98f4a 90%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      text-shadow: 0 0 42px rgba(232, 207, 143, 0.28);
+    }
+    .title-sub {
+      font-style: italic; font-size: 19px; color: #cfe0ef; margin-top: 12px;
+      letter-spacing: 0.08em;
+    }
+    .title-intro { color: #a9bccf; font-size: 15px; line-height: 1.65; margin: 26px auto 34px; max-width: 560px; }
+    #btn-begin {
+      font-family: 'Cinzel', serif; font-size: 16px; letter-spacing: 0.22em;
+      padding: 15px 46px; color: #f5ecd7;
+      background: linear-gradient(180deg, rgba(64,96,138,0.35), rgba(30,50,78,0.35));
+      border: 1px solid rgba(232,207,143,0.65); border-radius: 2px;
+      transition: all 0.25s ease;
+    }
+    #btn-begin:hover {
+      background: linear-gradient(180deg, rgba(94,132,182,0.5), rgba(44,70,106,0.5));
+      box-shadow: 0 0 26px rgba(232,207,143,0.35); transform: translateY(-1px);
+    }
+    .title-controls {
+      display: flex; flex-wrap: wrap; gap: 8px 22px; justify-content: center;
+      margin-top: 36px; font-size: 13px; color: #8fa6bd;
+    }
+    .title-controls b { color: #d8c89a; font-weight: 500; }
+
+    /* ---------- tracker ---------- */
+    .panel {
+      position: absolute; top: 22px; right: 26px; text-align: right;
+      background: rgba(10, 20, 34, 0.42); border: 1px solid rgba(220,200,150,0.35);
+      border-radius: 3px; padding: 12px 16px; backdrop-filter: blur(6px);
+    }
+    .tracker-title { font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.1em; color: #ecdfba; }
+    #shard-pips { display: flex; gap: 7px; justify-content: flex-end; margin-top: 9px; }
+    .pip {
+      width: 11px; height: 11px; transform: rotate(45deg) scale(0.82);
+      border: 1px solid rgba(160,190,215,0.55); background: rgba(120,160,200,0.12);
+      transition: all 0.5s ease;
+    }
+    .pip.lit {
+      background: radial-gradient(circle at 40% 35%, #dffaff, #58c8f0 60%, #2a86c8);
+      border-color: #bfeeff; box-shadow: 0 0 10px rgba(110,210,255,0.9);
+    }
+
+    /* ---------- stamina ---------- */
+    #stamina-wrap {
+      position: absolute; bottom: 56px; left: 50%; transform: translateX(-50%);
+      width: 240px; height: 7px; border-radius: 4px; overflow: hidden;
+      background: rgba(8,16,28,0.55); border: 1px solid rgba(230,220,180,0.4);
+    }
+    #stamina-bar {
+      height: 100%; width: 100%; border-radius: 4px;
+      background: linear-gradient(90deg, #f5e79a, #ffe95e);
+      box-shadow: 0 0 8px rgba(255,233,94,0.55);
+      transition: width 0.08s linear;
+    }
+    #stamina-wrap.low #stamina-bar { background: linear-gradient(90deg,#f0a06a,#ff7a4e); }
+
+    /* ---------- prompt / toast ---------- */
+    #prompt {
+      position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%);
+      font-family: 'Cinzel', serif; font-size: 14px; letter-spacing: 0.14em;
+      color: #f5ecd2; text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+      background: rgba(10,20,34,0.4); border: 1px solid rgba(220,200,150,0.3);
+      padding: 8px 20px; border-radius: 2px;
+    }
+    #toast {
+      position: absolute; top: 84px; left: 50%; transform: translateX(-50%);
+      font-style: italic; font-size: 16px; color: #eee6cd;
+      text-shadow: 0 1px 8px rgba(0,0,0,0.85); animation: fadeIn 0.5s ease both;
+      white-space: nowrap;
+    }
+
+    /* ---------- dialogue ---------- */
+    #dialogue {
+      position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%);
+      width: min(680px, calc(100vw - 48px));
+      background: linear-gradient(180deg, rgba(12,22,38,0.88), rgba(8,15,27,0.92));
+      border: 1px solid rgba(222,202,152,0.55); border-radius: 3px;
+      padding: 20px 26px 16px; backdrop-filter: blur(8px);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 0 60px rgba(80,110,150,0.08);
+    }
+    #dlg-name {
+      font-family: 'Cinzel', serif; font-size: 14px; letter-spacing: 0.2em;
+      color: #e8cf8f; margin-bottom: 10px;
+    }
+    #dlg-name::before { content: '❖ '; color: #b9a05e; }
+    #dlg-text { font-size: 17px; line-height: 1.7; color: #e9e4d4; min-height: 84px; white-space: pre-line; }
+    #dlg-hint { text-align: right; font-size: 12px; color: #93a7bd; margin-top: 8px; letter-spacing: 0.1em; }
+
+    /* ---------- finale ---------- */
+    #finale {
+      position: absolute; inset: 0; pointer-events: auto;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at 50% 40%, rgba(30,60,100,0.25), rgba(5,12,24,0.85));
+      animation: fadeIn 2s ease both;
+    }
+    #finale h2 {
+      font-family: 'Cinzel', serif; font-size: clamp(30px, 5vw, 54px); letter-spacing: 0.18em;
+      background: linear-gradient(180deg, #fdf6e3, #e8cf8f 60%, #b98f4a);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    #finale p { max-width: 600px; text-align: center; margin: 26px 0 34px; line-height: 1.9; color: #d5dee8; font-size: 17px; }
+    #btn-roam {
+      font-family: 'Cinzel', serif; font-size: 14px; letter-spacing: 0.2em;
+      padding: 12px 36px; color: #f5ecd7; background: rgba(40,66,100,0.4);
+      border: 1px solid rgba(232,207,143,0.55); border-radius: 2px; transition: all .25s;
+    }
+    #btn-roam:hover { background: rgba(70,104,150,0.55); box-shadow: 0 0 22px rgba(232,207,143,0.3); }
+
+    /* ---------- frame ---------- */
+    #vignette-frame {
+      position: absolute; inset: 0; pointer-events: none;
+      box-shadow: inset 0 0 140px rgba(4, 10, 20, 0.55);
+    }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="ui"></div>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
