@@ -19,8 +19,8 @@ export function createWater(scene, heightTex) {
     uZenith: { value: PALETTE.zenith.clone() },
     uHorizon: { value: PALETTE.horizon.clone() },
     uFogColor: { value: PALETTE.fog.clone() },
-    uFogNear: { value: 55 },
-    uFogFar: { value: 430 },
+    uFogNear: { value: 40 },
+    uFogFar: { value: 245 },
     uCamPos: { value: new THREE.Vector3() },
   };
 

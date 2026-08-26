@@ -40,7 +40,7 @@ document.getElementById('app').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 // Strong aerial perspective 2014 distance separation is a major depth cue.
-scene.fog = new THREE.Fog(PALETTE.fog, 55, 430);
+scene.fog = new THREE.Fog(PALETTE.fog, 40, 245);
 
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1600);
 
@@ -157,7 +157,14 @@ window.__shardDebug = () => shards.group.children.map((c, i) => ({
   scale: +c.scale.x.toFixed(2),
 })).concat([{ player: { x: +controller.pos.x.toFixed(1), y: +controller.pos.y.toFixed(1), z: +controller.pos.z.toFixed(1) } }]);
 // Deterministic frame pump for headless QA (RAF is compositor-starved there).
-window.__pump = (n = 30) => { for (let i = 0; i < n; i++) tick(); return window.__shardCount; };
+window.__pump = (n = 30, step = 1 / 60) => {
+  fixedDt = step;                       // deterministic: no 1000fps illusion
+  for (let i = 0; i < n; i++) tick();
+  fixedDt = null;
+  return window.__shardCount;
+};
+window.__setAuto = (on) => { quality.setAuto(on); hud.setAutoChecked(on); };
+window.__setQuality = (i, v) => { quality.setAuto(false); hud.setAutoChecked(false); quality.setLevel(i, v); };
 window.__capture = (n = 2) => {
   for (let i = 0; i < n; i++) tick();
   return renderer.domElement.toDataURL('image/png');
@@ -218,6 +225,8 @@ function applyQuality(cfg) {
 
 // ---------------------------------------------------------------- loop
 const clock = new THREE.Clock();
+let simTime = 0;
+let fixedDt = null;         // QA: pump frames at a fixed step
 
 function frame() {
   requestAnimationFrame(frame);
@@ -232,8 +241,10 @@ function frame() {
 
 function tick() {
   renderer.info.reset();
-  const dt = Math.min(clock.getDelta(), 0.05);
-  const t = clock.elapsedTime;
+  const raw = Math.min(clock.getDelta(), 0.05);
+  const dt = fixedDt !== null ? fixedDt : raw;
+  simTime += dt;
+  const t = simTime;
 
   if (started) {
     controller.update(dt);

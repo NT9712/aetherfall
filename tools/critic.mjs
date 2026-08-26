@@ -94,14 +94,33 @@ export function analyse(file) {
   }
   const usedBins = bins.filter((b) => b / n > 0.005).length;
 
-  // Atmospheric depth: distant (upper) band should read lighter/hazier than
-  // the near (lower) band. Flat games fail this.
-  let topL = 0, botL = 0, topN = 0, botN = 0;
-  for (let y = Math.floor(H * 0.30); y < Math.floor(H * 0.48); y++)
-    for (let x = 0; x < W; x++) { topL += lum[y * W + x]; topN++; }
-  for (let y = Math.floor(H * 0.72); y < H; y++)
-    for (let x = 0; x < W; x++) { botL += lum[y * W + x]; botN++; }
-  const depthCue = Math.abs(topL / topN - botL / botN);
+  // Atmospheric depth: ground just under the horizon should read hazier than
+  // ground in the foreground. A fixed screen band is wrong — in a
+  // downward-tilted shot it samples foreground twice — so find the horizon
+  // per column (first non-sky pixel) and measure relative to that.
+  const isSky = (i) => {
+    const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+    return b > g && b > r && lum[i] > 0.42;      // blue-dominant and bright
+  };
+  const horizons = [];
+  for (let x = 0; x < W; x += 2) {
+    let h0 = -1;
+    for (let y = 0; y < H; y++) {
+      const i = y * W + x;
+      if (!isSky(i)) { h0 = y; break; }
+    }
+    if (h0 > 0) horizons.push(h0);
+  }
+  horizons.sort((a, b) => a - b);
+  const horizon = horizons.length ? horizons[Math.floor(horizons.length / 2)] : Math.floor(H * 0.3);
+
+  let farL = 0, farN = 0, nearL = 0, nearN = 0;
+  const farEnd = Math.min(H, horizon + Math.floor(H * 0.14));
+  for (let y = horizon; y < farEnd; y++)
+    for (let x = 0; x < W; x++) { farL += lum[y * W + x]; farN++; }
+  for (let y = Math.floor(H * 0.80); y < H; y++)
+    for (let x = 0; x < W; x++) { nearL += lum[y * W + x]; nearN++; }
+  const depthCue = farN && nearN ? Math.abs(farL / farN - nearL / nearN) : 0;
 
   const hueTotal = hueHist.reduce((a, b) => a + b, 0) || 1;
   const satVariety = hueHist.filter((h) => h / hueTotal > 0.02).length / 24;

@@ -35,6 +35,8 @@ console.log('loading...');
 await page.goto(URL + '&v=' + Date.now(), { waitUntil: 'domcontentloaded' });
 await new Promise((r) => setTimeout(r, 6000));
 await page.evaluate(() => document.getElementById('btn-begin').click());
+// Deterministic art review: pin quality, no adaptive drift between shots.
+await page.evaluate(() => { window.__setAuto(false); [0,1,2].forEach(i => window.__setQuality(i, 3)); });
 await page.evaluate((k) => window.__pump(k), 2);
 console.log('world ready');
 

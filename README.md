@@ -49,6 +49,7 @@ Requires a browser with WebGL2.
 | `E` | Read ancient steles / close dialogue |
 | `Mouse` | Look (click to capture pointer) · `Wheel` zoom |
 | `M` | Toggle ambience |
+| `Tab` | Graphics settings |
 
 ## The game
 
@@ -57,12 +58,69 @@ a beacon of light visible across the island. Collect all seven to re-weave the
 sky. Four weathered steles tell the story of Lyra the Skyward and the
 Sundering.
 
+## Rendering: chunked visibility culling
+
+The world is partitioned into 34m sectors, Minecraft-style. Every frame each
+sector runs a gauntlet of increasingly expensive tests and is rejected as early
+as possible:
+
+1. **Distance** — outside the render-distance ring
+2. **Frustum** — outside the camera's view volume
+3. **Occlusion** — line of sight blocked by terrain. The eye→sector segment is
+   marched looking for ground standing above the ray; two hits are required so
+   heightmap noise can't produce false positives.
+
+Static props (trees, canopies, shrubs, rocks, contact shadows, flowers) are
+merged **per sector** rather than into one island-wide batch, so rejecting a
+sector removes its entire polygon batch with a single visibility flag — the GPU
+never sees those triangles. Grass is 36 chunk meshes; its toroidal wrap is a
+per-chunk uniform so each chunk keeps a tight bounding sphere that can actually
+be frustum-tested.
+
+Measured at the spawn vantage:
+
+| | culling off | culling on |
+|---|---|---|
+| triangles | 1,197k | **939k** (−21.5%) |
+| draw calls | 717 | **428** |
+| sectors drawn | 70/70 | **25/70** |
+
+Occlusion alone rejects 5 sectors per frame that survive the frustum test.
+
+## Quality: three sliders, FPS-adaptive
+
+`Tab` opens a graphics panel with three sliders, each a five-step ladder from
+Potato to Ultra:
+
+- **Render Distance** — sector cull ring, fog band, grass reach
+- **Vegetation Density** — grass / flower / shrub instance budgets
+- **Effects Quality** — bloom, shadow map size, pixel ratio, particle budget
+
+An adaptive controller samples a rolling FPS average and walks the levels to
+hold 60fps. It smooths asymmetrically (fast to react to drops, slow to claim
+gains) so a momentary stall doesn't yank quality, sheds the most expensive
+setting first, and uses hysteresis plus a cooldown so it can't oscillate.
+Touching a slider switches adaptive off; while it's on, the sliders track it.
+
+Settings retune the live scene rather than rebuilding it. Covered by
+`tools/quality-test.mjs`:
+
+```
+PASS  30 fps sustained downshifts from High        -> [0,0,0]
+PASS  144 fps sustained upshifts toward Ultra      -> [4,4,4]
+PASS  60 fps steady holds its levels               -> [3,3,3]
+PASS  effects shed before density                  -> [2,3,0]
+PASS  manual mode ignores framerate                -> [3,0,3]
+```
+
 ## Architecture
 
 ```
 src/
   main.js              bootstrap, lighting rig, game loop, quest wiring
   core/noise.js        seeded value-noise / fbm / ridged fractal toolkit
+  core/culling.js      sector partitioning + distance/frustum/occlusion tests
+  core/quality.js      quality ladders, FPS meter, adaptive controller
   core/input.js        keyboard + pointer-lock mouse
   data/lore.js         world text, stele inscriptions, shard placements
   world/heightfield.js single source of truth for island shape (+ baked

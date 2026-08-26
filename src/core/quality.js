@@ -12,18 +12,20 @@ export const LEVEL_LABELS = ['Render Distance', 'Vegetation Density', 'Effects Q
 
 // Per-level presets, index 0..4 (Potato → Ultra).
 const PRESETS = {
+  // Aerial perspective is deliberately strong at every tier: distance
+  // separation is what stops a landscape reading as a flat green sheet.
   distance: [
-    { cull: 90,  fogNear: 32, fogFar: 190, grassTile: 46 },
-    { cull: 130, fogNear: 40, fogFar: 260, grassTile: 60 },
-    { cull: 175, fogNear: 48, fogFar: 340, grassTile: 76 },
-    { cull: 230, fogNear: 55, fogFar: 430, grassTile: 96 },
-    { cull: 300, fogNear: 62, fogFar: 520, grassTile: 112 },
+    { cull: 90,  fogNear: 26, fogFar: 165, grassTile: 46 },
+    { cull: 130, fogNear: 32, fogFar: 220, grassTile: 60 },
+    { cull: 175, fogNear: 34, fogFar: 205, grassTile: 76 },
+    { cull: 230, fogNear: 40, fogFar: 245, grassTile: 96 },
+    { cull: 300, fogNear: 46, fogFar: 300, grassTile: 112 },
   ],
   density: [
-    { grass: 0.18, flowers: 0.15, shrubs: 0.35 },
-    { grass: 0.36, flowers: 0.35, shrubs: 0.60 },
-    { grass: 0.58, flowers: 0.60, shrubs: 0.80 },
-    { grass: 0.80, flowers: 0.85, shrubs: 1.00 },
+    { grass: 0.20, flowers: 0.15, shrubs: 0.35 },
+    { grass: 0.42, flowers: 0.40, shrubs: 0.65 },
+    { grass: 0.68, flowers: 0.65, shrubs: 0.85 },
+    { grass: 0.92, flowers: 0.90, shrubs: 1.00 },
     { grass: 1.00, flowers: 1.00, shrubs: 1.00 },
   ],
   effects: [
