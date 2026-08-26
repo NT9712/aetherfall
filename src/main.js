@@ -61,6 +61,9 @@ sun.shadow.camera.near = 74; sun.shadow.camera.far = 196;
 sun.shadow.bias = -0.0006;
 sun.shadow.normalBias = 0.05;
 sun.shadow.camera.updateProjectionMatrix();
+// Anything inside this radius of the player can cast into the shadow map, so
+// the culler must keep it drawable even when it is behind the camera.
+const SHADOW_RADIUS = 46 * Math.SQRT2 + 6;
 scene.add(sun, sun.target);
 
 // Restrained fill: too much hemisphere light erases shadows and
@@ -170,6 +173,11 @@ window.__capture = (n = 2) => {
   return renderer.domElement.toDataURL('image/png');
 };
 window.__hideWater = () => { water.mesh.visible = false; };
+window.__playerState = () => ({
+  x: controller.pos.x, y: controller.pos.y, z: controller.pos.z,
+  facing: controller.facing, grounded: controller.grounded,
+  vx: controller.velH.x, vz: controller.velH.y,
+});
 window.__cullStats = () => ({
   ...culler.stats,
   grassDrawn: vegetation.stats.drawn,
@@ -214,13 +222,31 @@ function applyQuality(cfg) {
 
   // Effects: resolution scale, shadows, bloom, particles.
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, cfg.effects.pixelRatio));
-  renderer.shadowMap.enabled = cfg.effects.shadows;
+
+  // Toggling shadows requires recompiling materials: USE_SHADOWMAP is baked
+  // into the program at compile time, so flipping the flag alone leaves every
+  // existing shader on the old code path (shadows vanish, or stale shadows
+  // linger, until something else happens to trigger a rebuild).
+  if (renderer.shadowMap.enabled !== cfg.effects.shadows) {
+    renderer.shadowMap.enabled = cfg.effects.shadows;
+    renderer.shadowMap.needsUpdate = true;
+    scene.traverse((o) => {
+      if (!o.isMesh || !o.material) return;
+      const list = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of list) m.needsUpdate = true;
+    });
+  }
   if (sun.shadow.mapSize.x !== cfg.effects.shadowMap) {
     sun.shadow.mapSize.set(cfg.effects.shadowMap, cfg.effects.shadowMap);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+    renderer.shadowMap.needsUpdate = true;
   }
   post.bloom.enabled = cfg.effects.bloom;
   motes.setDensity(cfg.effects.motes);
+
+  // Density: shrink live instance counts (previously this preset only applied
+  // at construction, so the slider did nothing after startup).
+  vegetation.setDensity(cfg.density);
 }
 
 // ---------------------------------------------------------------- loop
@@ -278,7 +304,7 @@ function tick() {
     sun.target.updateMatrixWorld();
 
     motes.update(t, controller.pos);
-    culler.update(camera, camera.position);
+    culler.update(camera, camera.position, controller.pos, SHADOW_RADIUS);
     playerBlob.update(controller.pos, heightAt(controller.pos.x, controller.pos.z));
 
     // Finale aurora: sky warms as reward.

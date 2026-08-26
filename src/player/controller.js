@@ -107,10 +107,14 @@ export class Controller {
       this.pos.z -= this.velH.y * dt;
       this.velH.multiplyScalar(0.2);
     }
-    // Hard island bound.
+    // Hard island bound. Scale only the horizontal components: using
+    // Vector3.multiplyScalar here also shrank Y, dragging the player downward
+    // every frame they were held against the ring.
     const dCenter = Math.hypot(this.pos.x, this.pos.z);
     if (dCenter > 205) {
-      this.pos.multiplyScalar(205 / dCenter);
+      const k2 = 205 / dCenter;
+      this.pos.x *= k2;
+      this.pos.z *= k2;
     }
 
     // ---- vertical ----

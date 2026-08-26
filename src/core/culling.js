@@ -12,7 +12,7 @@
 // whole batch in one `visible = false`, so the GPU never sees those polygons.
 
 import * as THREE from 'three';
-import { heightAt } from '../world/heightfield.js';
+import { heightAt, heightAtFast } from '../world/heightfield.js';
 
 export const SECTOR_SIZE = 34;
 
@@ -30,7 +30,7 @@ export class CullingManager {
     this._frustum = new THREE.Frustum();
     this._mat = new THREE.Matrix4();
     this._sphere = new THREE.Sphere();
-    this.stats = { total: 0, drawn: 0, byDistance: 0, byFrustum: 0, byOcclusion: 0 };
+    this.stats = { total: 0, drawn: 0, byDistance: 0, byFrustum: 0, byOcclusion: 0, keptForShadows: 0 };
   }
 
   // Register a mesh as belonging to the sector containing (x, z).
@@ -46,11 +46,14 @@ export class CullingManager {
         center: new THREE.Vector3(cx, heightAt(cx, cz) + 4, cz),
         radius: SECTOR_SIZE * 0.75,
         meshes: [],
+        hasCasters: false,
       };
       this.sectors.set(key, s);
     }
     s.radius = Math.max(s.radius, radiusHint);
     s.meshes.push(mesh);
+    // Only sectors holding shadow casters need to survive camera rejection.
+    if (mesh.castShadow) s.hasCasters = true;
     // Three's own per-object frustum test is redundant once we cull sectors,
     // and its bounding spheres are wrong for shader-displaced geometry.
     mesh.frustumCulled = false;
@@ -74,20 +77,23 @@ export class CullingManager {
       // Margin scales with distance so distant sectors aren't over-culled by
       // heightmap noise.
       const margin = 1.5 + t * 4.0;
-      if (heightAt(sx, sz) > rayY + margin) {
+      if (heightAtFast(sx, sz) > rayY + margin) {
         if (++blocked >= 2) return true;   // two hits = a real ridge
       }
     }
     return false;
   }
 
-  update(camera, eye) {
+  // shadowFocus/shadowRadius describe the volume the sun's shadow camera
+  // covers. Sectors inside it must stay drawable even when they fail the
+  // camera tests, otherwise they stop casting shadows that are visible.
+  update(camera, eye, shadowFocus = null, shadowRadius = 0) {
     if (!this.enabled) return;
     this._mat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this._frustum.setFromProjectionMatrix(this._mat);
 
     const st = this.stats;
-    st.total = st.drawn = st.byDistance = st.byFrustum = st.byOcclusion = 0;
+    st.total = st.drawn = st.byDistance = st.byFrustum = st.byOcclusion = st.keptForShadows = 0;
     const cullSq = this.cullDistance * this.cullDistance;
 
     for (const s of this.sectors.values()) {
@@ -105,6 +111,14 @@ export class CullingManager {
 
       if (visible && this.occlusionEnabled && this._occluded(eye, s.center)) {
         visible = false; st.byOcclusion++;
+      }
+
+      if (!visible && s.hasCasters && shadowFocus && shadowRadius > 0) {
+        const sx = s.center.x - shadowFocus.x, sz = s.center.z - shadowFocus.z;
+        if (Math.hypot(sx, sz) < shadowRadius + s.radius) {
+          visible = true;
+          st.keptForShadows++;
+        }
       }
 
       if (visible) st.drawn++;

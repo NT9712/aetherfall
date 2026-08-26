@@ -51,17 +51,40 @@ export function slopeAt(x, z) {
   return Math.min(1, Math.hypot(dx, dz) / (2 * e));
 }
 
+// CPU-side height lookup table. heightAt() runs several octaves of fbm and
+// costs ~8.6us; gameplay is fine with that, but per-frame systems that probe
+// the terrain hundreds of times (visibility occlusion, vegetation chunks)
+// cannot afford it. This bilinear LUT is ~150x faster.
+let LUT = null;
+let LUT_RES = 0;
+
+export function heightAtFast(x, z) {
+  if (!LUT) return heightAt(x, z);
+  const u = ((x - WORLD_MIN) / WORLD_EXTENT) * (LUT_RES - 1);
+  const v = ((z - WORLD_MIN) / WORLD_EXTENT) * (LUT_RES - 1);
+  if (u < 0 || v < 0 || u > LUT_RES - 1 || v > LUT_RES - 1) return heightAt(x, z);
+  const i0 = Math.floor(u), j0 = Math.floor(v);
+  const i1 = Math.min(LUT_RES - 1, i0 + 1), j1 = Math.min(LUT_RES - 1, j0 + 1);
+  const fu = u - i0, fv = v - j0;
+  const a = LUT[j0 * LUT_RES + i0], b = LUT[j0 * LUT_RES + i1];
+  const c = LUT[j1 * LUT_RES + i0], d = LUT[j1 * LUT_RES + i1];
+  return (a * (1 - fu) + b * fu) * (1 - fv) + (c * (1 - fu) + d * fu) * fv;
+}
+
 // Bake the heightfield into a 16-bit-precision RG texture so shaders
-// (water shore foam) can query terrain height per-pixel.
+// (water shore foam) can query terrain height per-pixel. The same pass fills
+// the CPU lookup table, so the expensive noise evaluation happens once.
 export function buildHeightTexture(res = 256) {
   const data = new Uint8Array(res * res * 2);
+  LUT = new Float32Array(res * res);
+  LUT_RES = res;
   const MIN_H = -20, MAX_H = 34, RANGE = MAX_H - MIN_H;
   for (let j = 0; j < res; j++) {
     for (let i = 0; i < res; i++) {
       const x = WORLD_MIN + ((i + 0.5) / res) * WORLD_EXTENT;
       const z = WORLD_MIN + ((j + 0.5) / res) * WORLD_EXTENT;
       let h = heightAt(x, z);
-      // Match bilinear-ish smoothing of the texture: fine as-is.
+      LUT[j * res + i] = h;
       const n01 = Math.min(1, Math.max(0, (h - MIN_H) / RANGE));
       const enc = Math.round(n01 * 65535);
       const o = (j * res + i) * 2;

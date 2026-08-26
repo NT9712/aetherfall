@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { heightAt, slopeAt, ISLAND_RADIUS, SHADER_COMMON } from './heightfield.js';
+import { heightAt, heightAtFast, slopeAt, ISLAND_RADIUS, SHADER_COMMON } from './heightfield.js';
 import { makeRng, smoothstep, valueNoise } from '../core/noise.js';
 import { sectorIndex, sectorKey } from '../core/culling.js';
 import { SUN_DIR, PALETTE } from './heightfield.js';
@@ -239,11 +239,17 @@ function createGrass(scene, heightTex, density = 1) {
   }
 
   const stats = { chunks: meshes.length, drawn: 0 };
+  const fullCounts = meshes.map((m) => m.count);
 
   return {
     mesh: meshes[0],
     meshes,
     stats,
+    // Runtime density: instance counts shrink without rebuilding buffers.
+    setDensity(f) {
+      const k = Math.max(0.02, Math.min(1, f));
+      meshes.forEach((m, i) => { m.count = Math.max(1, Math.round(fullCounts[i] * k)); });
+    },
     setTile(v) { /* field size is fixed at build time; distance preset scales cull */ },
     update(t, camPos, focus, camera, cullDistance = 999) {
       const fx = focus ? focus.x : camPos.x;
@@ -270,7 +276,7 @@ function createGrass(scene, heightTex, density = 1) {
         const dist = Math.hypot(dx, dz);
         let visible = dist < Math.min(cullDistance, TILE * 0.55 + 12);
         if (visible) {
-          sphere.center.set(cx, heightAt(cx, cz) + 1.0, cz);
+          sphere.center.set(cx, heightAtFast(cx, cz) + 1.0, cz);
           sphere.radius = CELL * 0.75 + 1.2;
           visible = frustum.intersectsSphere(sphere);
         }
@@ -333,6 +339,7 @@ function createFlowers(scene, culler, density = 1) {
     n++;
   }
   heads.count = stems.count = n;
+  const flowerFull = n;
   heads.instanceMatrix.needsUpdate = stems.instanceMatrix.needsUpdate = true;
   petal.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors.slice(0, n * 3), 3));
 
@@ -359,7 +366,15 @@ function createFlowers(scene, culler, density = 1) {
   stems.material = stemMat;
   heads.frustumCulled = stems.frustumCulled = false;
   scene.add(heads, stems);
-  return { update(camPos) { headMat.uniforms.uCamPos.value.copy(camPos); } };
+  if (culler) { culler.add(heads, 0, 0, 400); culler.add(stems, 0, 0, 400); }
+  return {
+    update(camPos) { headMat.uniforms.uCamPos.value.copy(camPos); },
+    setDensity(f) {
+      const k = Math.max(0, Math.min(1, f));
+      heads.count = stems.count = Math.round(flowerFull * k);
+      heads.visible = stems.visible = k > 0.01;
+    },
+  };
 }
 
 // ---------------------------------------------------------------- helpers
@@ -644,6 +659,10 @@ export function createVegetation(scene, heightTex, culler, quality = {}) {
     update(t, camPos, focus, camera, cullDistance) {
       grass.update(t, camPos, focus, camera, cullDistance);
       flowers.update(camPos);
+    },
+    setDensity(d) {
+      grass.setDensity(d.grass ?? 1);
+      flowers.setDensity(d.flowers ?? 1);
     },
   };
 }
