@@ -57,9 +57,12 @@ export class Controller {
       const len = Math.hypot(ix, iz);
       ix /= len; iz /= len;
       const sin = Math.sin(this.camYaw), cos = Math.cos(this.camYaw);
-      // Forward is away from camera.
-      wishX = iz * -sin + ix * cos * -1;
-      wishZ = iz * -cos + ix * sin;
+      // Camera orbits at offset (sin yaw, cos yaw) from the player, so the
+      // direction the player runs on W is forward = (-sin, -cos), and the
+      // right-hand strafe vector is right = (cos, -sin).
+      //   wish = forward * iz + right * ix
+      wishX = -sin * iz + cos * ix;
+      wishZ = -cos * iz - sin * ix;
       const wl = Math.hypot(wishX, wishZ);
       wishX /= wl; wishZ /= wl;
     }
