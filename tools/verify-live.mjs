@@ -3,12 +3,12 @@ import puppeteer from 'puppeteer';
 
 const URL = 'https://aetherfall-seven.vercel.app';
 const browser = await puppeteer.launch({
-  headless: 'new', protocolTimeout: 120000,
+  headless: 'new', protocolTimeout: 900000,
   args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-unsafe-swiftshader',
          '--use-gl=angle', '--use-angle=swiftshader'],
 });
 const page = await browser.newPage();
-await page.setViewport({ width: 480, height: 270 });
+await page.setViewport({ width: 320, height: 180 });
 const errors = [];
 page.on('pageerror', (e) => errors.push('PAGEERROR: ' + e.message.slice(0, 120)));
 page.on('console', (m) => {
@@ -16,16 +16,16 @@ page.on('console', (m) => {
   if (m.type() === 'error' && !t.includes('fonts.g')) errors.push('CONSOLE: ' + t.slice(0, 140));
 });
 
-await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 600000 });
 await new Promise((r) => setTimeout(r, 4500));
 const hasCanvas = await page.evaluate(() => !!document.querySelector('#app canvas'));
 const title = await page.title();
 await page.evaluate(() => document.getElementById('btn-begin').click());
-await page.evaluate((k) => window.__pump(k), 8);
+await page.evaluate((k) => window.__pump(k), 2);
 
 for (const [x, z] of [[22, -34], [-52, 8], [64, 30], [-98, 58], [90, 84], [-38, -112], [12, 136]]) {
   await page.evaluate((x, z) => window.__teleport(x, z), x, z);
-  await page.evaluate((k) => window.__pump(k), 3);
+  await page.evaluate((k) => window.__pump(k), 2);
 }
 await new Promise((r) => setTimeout(r, 1300));
 
