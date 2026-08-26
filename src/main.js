@@ -14,6 +14,8 @@ import { Input } from './core/input.js';
 import { createMotes, createBursts, createBlobShadow } from './fx/particles.js';
 import { createPost } from './fx/post.js';
 import { createHUD } from './ui/hud.js';
+import { Quality } from './core/quality.js';
+import { CullingManager } from './core/culling.js';
 import { Ambience } from './audio/ambience.js';
 
 // ---------------------------------------------------------------- renderer
@@ -31,6 +33,9 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
+// Accumulate draw stats across every pass of the frame (the composer would
+// otherwise reset them between passes, hiding the real cost).
+renderer.info.autoReset = false;
 document.getElementById('app').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -69,8 +74,11 @@ const sky = createSky(scene);
 const clouds = createClouds(scene);
 const terrain = createTerrain(scene);
 const water = createWater(scene, heightTex);
-const vegetation = createVegetation(scene, heightTex);
+const culler = new CullingManager();
+const quality = new Quality({ onChange: (s) => applyQuality(s) });
+const vegetation = createVegetation(scene, heightTex, culler, quality.settings());
 const stones = createStones(scene);
+for (const st of stones.items) culler.add(st.group, st.x, st.z, 12);
 const shards = createShards(scene);
 const motes = createMotes(scene);
 const bursts = createBursts(scene);
@@ -155,6 +163,18 @@ window.__capture = (n = 2) => {
   return renderer.domElement.toDataURL('image/png');
 };
 window.__hideWater = () => { water.mesh.visible = false; };
+window.__cullStats = () => ({
+  ...culler.stats,
+  grassDrawn: vegetation.stats.drawn,
+  grassChunks: vegetation.stats.chunks,
+  triangles: renderer.info.render.triangles,
+  calls: renderer.info.render.calls,
+});
+window.__setOcclusion = (on) => { culler.occlusionEnabled = on; };
+window.__setCulling = (on) => {
+  culler.enabled = on;
+  if (!on) for (const s of culler.sectors.values()) for (const m of s.meshes) m.visible = true;
+};
 window.__toggleShadows = (on) => { renderer.shadowMap.enabled = on; scene.traverse(o => { if (o.isMesh && o.material) { const m = Array.isArray(o.material)?o.material:[o.material]; m.forEach(x => x.needsUpdate = true); } }); };
 
 // Dialogue interaction.
@@ -166,6 +186,35 @@ input.onInteract = () => {
     hud.openDialogue(st.name, st.text);
   }
 };
+
+// Slider + adaptive wiring.
+hud.onQualityChange((i, v) => { quality.setAuto(false); hud.setAutoChecked(false); quality.setLevel(i, v); });
+hud.onAutoChange((on) => quality.setAuto(on));
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Tab') { e.preventDefault(); hud.toggleSettings(); }
+});
+
+// ------------------------------------------------------------- quality apply
+function applyQuality(cfg) {
+  // Distance: fog band + sector cull ring.
+  scene.fog.near = cfg.distance.fogNear;
+  scene.fog.far = cfg.distance.fogFar;
+  culler.cullDistance = cfg.distance.cull;
+  for (const m of [water.mesh, ...(vegetation.meshes || [])]) {
+    const u = m && m.material && m.material.uniforms;
+    if (u && u.uFogNear) { u.uFogNear.value = cfg.distance.fogNear; u.uFogFar.value = cfg.distance.fogFar; }
+  }
+
+  // Effects: resolution scale, shadows, bloom, particles.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, cfg.effects.pixelRatio));
+  renderer.shadowMap.enabled = cfg.effects.shadows;
+  if (sun.shadow.mapSize.x !== cfg.effects.shadowMap) {
+    sun.shadow.mapSize.set(cfg.effects.shadowMap, cfg.effects.shadowMap);
+    if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  }
+  post.bloom.enabled = cfg.effects.bloom;
+  motes.setDensity(cfg.effects.motes);
+}
 
 // ---------------------------------------------------------------- loop
 const clock = new THREE.Clock();
@@ -182,6 +231,7 @@ function frame() {
 }
 
 function tick() {
+  renderer.info.reset();
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
 
@@ -217,6 +267,7 @@ function tick() {
     sun.target.updateMatrixWorld();
 
     motes.update(t, controller.pos);
+    culler.update(camera, camera.position);
     playerBlob.update(controller.pos, heightAt(controller.pos.x, controller.pos.z));
 
     // Finale aurora: sky warms as reward.
@@ -230,9 +281,14 @@ function tick() {
   clouds.tick(dt);
   sky.tick(t);
   water.update(t, camera.position);
-  vegetation.update(t, camera.position, started ? controller.pos : camera.position);
+  vegetation.update(t, camera.position, started ? controller.pos : camera.position,
+    camera, quality.settings().distance.cull);
   stones.update(t);
   terrain.update(camera.position);
+
+  quality.update(dt);
+  hud.setPerf(quality.fps, quality.levels, culler.stats, vegetation.stats,
+    renderer.info.render.triangles, renderer.info.render.calls);
 
   input.endFrame();
   post.render();

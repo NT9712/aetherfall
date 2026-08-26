@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { heightAt, slopeAt, ISLAND_RADIUS, SHADER_COMMON } from './heightfield.js';
 import { makeRng, smoothstep, valueNoise } from '../core/noise.js';
+import { sectorIndex, sectorKey } from '../core/culling.js';
 import { SUN_DIR, PALETTE } from './heightfield.js';
 
 // ---------------------------------------------------------------- grass
@@ -14,9 +15,11 @@ import { SUN_DIR, PALETTE } from './heightfield.js';
 // ~25 blades/m² where it matters. Blade height is fetched from the terrain
 // heightmap in the vertex shader, and blades on cliffs, sand or water collapse
 // to zero scale.
-function createGrass(scene, heightTex) {
-  const COUNT = 150000;
-  const TILE = 96;                       // metres; field spans ±TILE/2
+function createGrass(scene, heightTex, density = 1) {
+  const COUNT = Math.round(150000 * density);
+  const TILE = 96;
+  const GRID = 6;                        // 6x6 chunks across the field
+  const CELL = TILE / GRID;                       // metres; field spans ±TILE/2
   const decode = heightTex.userData.decode;
 
   const bladeGeo = new THREE.PlaneGeometry(0.085, 0.48, 1, 5);
@@ -33,44 +36,47 @@ function createGrass(scene, heightTex) {
   }
 
   const rng = makeRng(20240817);
-  const offs = new Float32Array(COUNT * 2);
-  const rots = new Float32Array(COUNT);
-  const scales = new Float32Array(COUNT * 2);
-  const phases = new Float32Array(COUNT);
-  const tints = new Float32Array(COUNT * 3);
+  // Blades are bucketed into GRID x GRID chunks of the field.
+  const chunks = [];
+  for (let cz = 0; cz < GRID; cz++) {
+    for (let cx = 0; cx < GRID; cx++) {
+      chunks.push({
+        cx: -TILE / 2 + (cx + 0.5) * CELL,
+        cz: -TILE / 2 + (cz + 0.5) * CELL,
+        offs: [], rots: [], scales: [], phases: [], tints: [],
+      });
+    }
+  }
+  const chunkOf = (x, z) => {
+    const ix = Math.min(GRID - 1, Math.max(0, Math.floor((x + TILE / 2) / CELL)));
+    const iz = Math.min(GRID - 1, Math.max(0, Math.floor((z + TILE / 2) / CELL)));
+    return chunks[iz * GRID + ix];
+  };
 
   // Tufted distribution inside the tile.
   let n = 0;
   while (n < COUNT) {
-    const cx = (rng() - 0.5) * TILE;
-    const cz = (rng() - 0.5) * TILE;
+    const tx = (rng() - 0.5) * TILE;
+    const tz = (rng() - 0.5) * TILE;
     const blades = 4 + Math.floor(rng() * 10);
     const spread = 0.30 + rng() * 0.5;
-    const patch = valueNoise(cx * 0.9 + 5, cz * 0.9 + 5, 77);
+    const patch = valueNoise(tx * 0.9 + 5, tz * 0.9 + 5, 77);
     for (let b = 0; b < blades && n < COUNT; b++) {
       const a = rng() * Math.PI * 2;
       const r = Math.sqrt(rng()) * spread;
-      offs[n * 2] = cx + Math.cos(a) * r;
-      offs[n * 2 + 1] = cz + Math.sin(a) * r;
-      rots[n] = rng() * Math.PI * 2;
+      const bx = tx + Math.cos(a) * r;
+      const bz = tz + Math.sin(a) * r;
+      const ch = chunkOf(bx, bz);
+      ch.offs.push(bx, bz);
+      ch.rots.push(rng() * Math.PI * 2);
       const tall = rng() > 0.90 ? 1.45 : 1.0;
-      scales[n * 2] = 0.85 + rng() * 0.4;
-      scales[n * 2 + 1] = (0.8 + rng() * 0.55) * tall;
-      phases[n] = rng() * Math.PI * 2;
+      ch.scales.push(0.85 + rng() * 0.4, (0.8 + rng() * 0.55) * tall);
+      ch.phases.push(rng() * Math.PI * 2);
       const warm = patch * 0.45 + rng() * 0.22;
-      tints.set([0.24 + warm * 0.30, 0.50 + warm * 0.24 + rng() * 0.05, 0.14 + warm * 0.10], n * 3);
+      ch.tints.push(0.20 + warm * 0.30, 0.44 + warm * 0.26 + rng() * 0.05, 0.12 + warm * 0.10);
       n++;
     }
   }
-
-  bladeGeo.setAttribute('aOffset', new THREE.InstancedBufferAttribute(offs, 2));
-  bladeGeo.setAttribute('aRot', new THREE.InstancedBufferAttribute(rots, 1));
-  bladeGeo.setAttribute('aScale', new THREE.InstancedBufferAttribute(scales, 2));
-  bladeGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
-  bladeGeo.setAttribute('aTint', new THREE.InstancedBufferAttribute(tints, 3));
-
-  const mesh = new THREE.InstancedMesh(bladeGeo, null, COUNT);
-  mesh.frustumCulled = false;
 
   const uniforms = {
     uTime: { value: 0 },
@@ -81,6 +87,7 @@ function createGrass(scene, heightTex) {
     uFogFar: { value: 430 },
     uCamPos: { value: new THREE.Vector3() },
     uFocus: { value: new THREE.Vector2() },
+    uWrap: { value: new THREE.Vector2() },
     uTile: { value: TILE },
     uHeightMap: { value: heightTex },
     uHMin: { value: decode.MIN_H },
@@ -105,6 +112,7 @@ function createGrass(scene, heightTex) {
       varying vec3 vWorldPos;
       uniform float uTime, uTile, uHMin, uHRange;
       uniform vec2 uFocus;
+      uniform vec2 uWrap;
       uniform sampler2D uHeightMap;
       ${SHADER_COMMON}
 
@@ -112,9 +120,10 @@ function createGrass(scene, heightTex) {
         float t = clamp((position.y) / 0.48, 0.0, 1.0);
         vHeightT = t;
 
-        // Toroidal wrap: keep every blade within ±tile/2 of the focus point.
-        vec2 base = aOffset;
-        vec2 wrapped = base + floor((uFocus - base) / uTile + 0.5) * uTile;
+        // Toroidal wrap, applied per chunk (uniform) rather than per blade so
+        // every blade in a chunk shares one offset and the chunk keeps a tight
+        // bounding sphere the culler can test.
+        vec2 wrapped = aOffset + uWrap;
 
         // Terrain height + slope straight from the baked heightmap.
         float h  = sampleTerrain(uHeightMap, wrapped, uHMin, uHRange);
@@ -199,21 +208,76 @@ function createGrass(scene, heightTex) {
       }
     `,
   });
-  // merge() deep-clones; re-point the texture and keep a live handle to the
-  // merged uniform objects so per-frame updates actually reach the shader.
+  // merge() deep-clones the uniform objects, so re-point the texture here.
   mat.uniforms.uHeightMap.value = heightTex;
-  const U = mat.uniforms;
-  mesh.material = mat;
-  mesh.frustumCulled = false;
-  mesh.castShadow = false;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
+
+  // One mesh per chunk. Each gets its own material clone purely so it can
+  // carry its own uWrap; the shader program itself is shared by three.
+  const meshes = [];
+  const frustum = new THREE.Frustum();
+  const projScreen = new THREE.Matrix4();
+  const sphere = new THREE.Sphere();
+
+  for (const ch of chunks) {
+    if (!ch.rots.length) continue;
+    const geo = bladeGeo.clone();
+    geo.setAttribute('aOffset', new THREE.InstancedBufferAttribute(new Float32Array(ch.offs), 2));
+    geo.setAttribute('aRot', new THREE.InstancedBufferAttribute(new Float32Array(ch.rots), 1));
+    geo.setAttribute('aScale', new THREE.InstancedBufferAttribute(new Float32Array(ch.scales), 2));
+    geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(new Float32Array(ch.phases), 1));
+    geo.setAttribute('aTint', new THREE.InstancedBufferAttribute(new Float32Array(ch.tints), 3));
+
+    const m = mat.clone();
+    m.uniforms.uHeightMap.value = heightTex;
+    const mesh = new THREE.InstancedMesh(geo, m, ch.rots.length);
+    mesh.frustumCulled = false;          // culled manually against uWrap
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+    mesh.userData.chunk = ch;
+    scene.add(mesh);
+    meshes.push(mesh);
+  }
+
+  const stats = { chunks: meshes.length, drawn: 0 };
+
   return {
-    mesh,
-    update(t, camPos, focus) {
-      U.uTime.value = t;
-      U.uCamPos.value.copy(camPos);
-      U.uFocus.value.set(focus ? focus.x : camPos.x, focus ? focus.z : camPos.z);
+    mesh: meshes[0],
+    meshes,
+    stats,
+    setTile(v) { /* field size is fixed at build time; distance preset scales cull */ },
+    update(t, camPos, focus, camera, cullDistance = 999) {
+      const fx = focus ? focus.x : camPos.x;
+      const fz = focus ? focus.z : camPos.z;
+      projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      frustum.setFromProjectionMatrix(projScreen);
+
+      let drawn = 0;
+      for (const mesh of meshes) {
+        const ch = mesh.userData.chunk;
+        // Toroidal wrap for this chunk, shared by all of its blades.
+        const wx = Math.floor((fx - ch.cx) / TILE + 0.5) * TILE;
+        const wz = Math.floor((fz - ch.cz) / TILE + 0.5) * TILE;
+        const cx = ch.cx + wx, cz = ch.cz + wz;
+
+        const u = mesh.material.uniforms;
+        u.uTime.value = t;
+        u.uCamPos.value.copy(camPos);
+        u.uFocus.value.set(fx, fz);
+        u.uWrap.value.set(wx, wz);
+
+        // Chunk-level culling: distance ring, then frustum.
+        const dx = cx - camPos.x, dz = cz - camPos.z;
+        const dist = Math.hypot(dx, dz);
+        let visible = dist < Math.min(cullDistance, TILE * 0.55 + 12);
+        if (visible) {
+          sphere.center.set(cx, heightAt(cx, cz) + 1.0, cz);
+          sphere.radius = CELL * 0.75 + 1.2;
+          visible = frustum.intersectsSphere(sphere);
+        }
+        mesh.visible = visible;
+        if (visible) drawn++;
+      }
+      stats.drawn = drawn;
     },
   };
 }
@@ -222,14 +286,14 @@ function createGrass(scene, heightTex) {
 // Small blossoms scattered through the meadow. They cost almost nothing and
 // supply the warm colour accents that stop a green field reading as a
 // monochrome carpet.
-function createFlowers(scene) {
+function createFlowers(scene, culler, density = 1) {
   const rng = makeRng(5150);
   const petal = new THREE.CircleGeometry(0.055, 6);
   petal.rotateX(-Math.PI / 2);
   const stem = new THREE.PlaneGeometry(0.012, 0.16);
   stem.translate(0, 0.08, 0);
 
-  const COUNT = 5200;
+  const COUNT = Math.round(5200 * density);
   const heads = new THREE.InstancedMesh(petal, null, COUNT);
   const stems = new THREE.InstancedMesh(stem, null, COUNT);
   const colors = new Float32Array(COUNT * 3);
@@ -299,6 +363,37 @@ function createFlowers(scene) {
 }
 
 // ---------------------------------------------------------------- helpers
+
+// Group geometries into world sectors so each sector can be merged into a
+// single batch. Culling a sector then removes all of its polygons with one
+// visibility flag instead of touching hundreds of objects.
+function bucketBySector(entries) {
+  const buckets = new Map();
+  for (const e of entries) {
+    const [ix, iz] = sectorIndex(e.x, e.z);
+    const key = sectorKey(ix, iz);
+    let b = buckets.get(key);
+    if (!b) { b = { x: e.x, z: e.z, geos: [] }; buckets.set(key, b); }
+    b.geos.push(e.geo);
+  }
+  return buckets;
+}
+
+function addSectorMeshes(scene, culler, buckets, material, opts = {}) {
+  const meshes = [];
+  for (const b of buckets.values()) {
+    if (!b.geos.length) continue;
+    const mesh = new THREE.Mesh(mergeGeometries(b.geos), material);
+    mesh.castShadow = !!opts.castShadow;
+    mesh.receiveShadow = !!opts.receiveShadow;
+    if (opts.renderOrder) mesh.renderOrder = opts.renderOrder;
+    scene.add(mesh);
+    if (culler) culler.add(mesh, b.x, b.z, opts.radius);
+    meshes.push(mesh);
+  }
+  return meshes;
+}
+
 function paintVerts(geo, colorFn) {
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
@@ -331,7 +426,7 @@ function blob(rng, r, detail = 1) {
 }
 
 // ---------------------------------------------------------------- trees
-function createTrees(scene) {
+function createTrees(scene, culler, density = 1) {
   const rng = makeRng(777001);
   const trunkGeos = [], canopyGeos = [];
   const treeSpots = [];
@@ -349,7 +444,7 @@ function createTrees(scene) {
       const t = vy / trunkH;
       c.setRGB(0.34 - t * 0.05, 0.25 - t * 0.04, 0.18 - t * 0.03);
     });
-    trunkGeos.push(trunk.applyMatrix4(new THREE.Matrix4().makeTranslation(x, h - 0.1, z)));
+    trunkGeos.push({ x, z, geo: trunk.applyMatrix4(new THREE.Matrix4().makeTranslation(x, h - 0.1, z)) });
 
     // Root flare: a few wedges anchoring the trunk into the ground.
     for (let i = 0; i < 4; i++) {
@@ -358,7 +453,7 @@ function createTrees(scene) {
       root.rotateX(Math.PI);
       root.translate(x + Math.cos(a) * 0.20 * scale, h + 0.10 * scale, z + Math.sin(a) * 0.20 * scale);
       paintVerts(root, (c) => c.setRGB(0.31, 0.23, 0.17));
-      trunkGeos.push(root);
+      trunkGeos.push({ x, z, geo: root });
     }
 
     // Branches reaching into the canopy — kills the "lollipop" silhouette.
@@ -375,7 +470,7 @@ function createTrees(scene) {
       br.rotateX(-Math.sin(a) * tilt);
       br.translate(x + Math.sin(lean) * trunkH * 0.5, startY, z);
       paintVerts(br, (c) => c.setRGB(0.33, 0.24, 0.18));
-      trunkGeos.push(br);
+      trunkGeos.push({ x, z, geo: br });
       tips.push([
         x + Math.cos(a) * len * 0.75 * tilt,
         startY + len * 0.7,
@@ -414,7 +509,7 @@ function createTrees(scene) {
             base[2] + (warm[2] - base[2]) * tone * 0.35
           );
         });
-        canopyGeos.push(b);
+        canopyGeos.push({ x, z, geo: b });
       }
     }
   }
@@ -435,10 +530,10 @@ function createTrees(scene) {
 
   const trunkMat = new THREE.MeshToonMaterial({ vertexColors: true });
   const canopyMat = new THREE.MeshToonMaterial({ vertexColors: true });
-  const trunks = new THREE.Mesh(mergeGeometries(trunkGeos), trunkMat);
-  const canopies = new THREE.Mesh(mergeGeometries(canopyGeos), canopyMat);
-  trunks.castShadow = canopies.castShadow = true;
-  scene.add(trunks, canopies);
+  addSectorMeshes(scene, culler, bucketBySector(trunkGeos), trunkMat,
+    { castShadow: true, receiveShadow: true, radius: 40 });
+  addSectorMeshes(scene, culler, bucketBySector(canopyGeos), canopyMat,
+    { castShadow: true, receiveShadow: true, radius: 42 });
 
   // Contact blobs under each canopy — grounds trees into the meadow.
   const c = document.createElement('canvas');
@@ -454,21 +549,20 @@ function createTrees(scene) {
     const g = new THREE.CircleGeometry(2.1, 20);
     g.rotateX(-Math.PI / 2);
     g.translate(x, h + 0.045, z);
-    return g;
+    return { x, z, geo: g };
   });
-  const blobs = new THREE.Mesh(mergeGeometries(blobGeos), blobMat);
-  blobs.renderOrder = 1;
-  scene.add(blobs);
+  addSectorMeshes(scene, culler, bucketBySector(blobGeos), blobMat, { renderOrder: 1, radius: 38 });
 }
 
 // ---------------------------------------------------------------- shrubs
 // The mid-scale layer. Without something between ankle-high grass and
 // full trees a landscape reads as empty no matter how good either is.
-function createShrubs(scene) {
+function createShrubs(scene, culler, density = 1) {
   const rng = makeRng(31337);
   const geos = [];
+  const target = Math.round(240 * density);
   let n = 0, tries = 0;
-  while (n < 240 && tries < 9000) {
+  while (n < target && tries < 9000) {
     tries++;
     const x = (rng() * 2 - 1) * (ISLAND_RADIUS - 10);
     const z = (rng() * 2 - 1) * (ISLAND_RADIUS - 10);
@@ -497,18 +591,17 @@ function createShrubs(scene) {
           (dark[2] + (lit[2] - dark[2]) * up) * (1 - tone * 0.3) + warm[2] * tone * 0.3
         );
       });
-      geos.push(b);
+      geos.push({ x, z, geo: b });
     }
     n++;
   }
-  const mesh = new THREE.Mesh(mergeGeometries(geos),
-    new THREE.MeshToonMaterial({ vertexColors: true }));
-  mesh.castShadow = mesh.receiveShadow = true;
-  scene.add(mesh);
+  addSectorMeshes(scene, culler, bucketBySector(geos),
+    new THREE.MeshToonMaterial({ vertexColors: true }),
+    { castShadow: true, receiveShadow: true, radius: 36 });
 }
 
 // ---------------------------------------------------------------- rocks
-function createRocks(scene) {
+function createRocks(scene, culler) {
   const rng = makeRng(424242);
   const geos = [];
   let count = 0, tries = 0;
@@ -529,23 +622,28 @@ function createRocks(scene) {
       const t = 0.75 + rng() * 0.3;
       c.setRGB(0.47 * t, 0.44 * t, 0.40 * t);
     });
-    geos.push(g);
+    geos.push({ x, z, geo: g });
     count++;
   }
-  const mat = new THREE.MeshToonMaterial({ vertexColors: true });
-  const rocks = new THREE.Mesh(mergeGeometries(geos), mat);
-  rocks.castShadow = rocks.receiveShadow = true;
-  scene.add(rocks);
+  addSectorMeshes(scene, culler, bucketBySector(geos),
+    new THREE.MeshToonMaterial({ vertexColors: true }),
+    { castShadow: true, receiveShadow: true, radius: 38 });
 }
 
-export function createVegetation(scene, heightTex) {
-  const grass = createGrass(scene, heightTex);
-  const flowers = createFlowers(scene);
-  createTrees(scene);
-  createShrubs(scene);
-  createRocks(scene);
+export function createVegetation(scene, heightTex, culler, quality = {}) {
+  const d = quality.density || {};
+  const grass = createGrass(scene, heightTex, d.grass ?? 1);
+  const flowers = createFlowers(scene, culler, d.flowers ?? 1);
+  createTrees(scene, culler);
+  createShrubs(scene, culler, d.shrubs ?? 1);
+  createRocks(scene, culler);
   return {
     mesh: grass.mesh,
-    update(t, camPos, focus) { grass.update(t, camPos, focus); flowers.update(camPos); },
+    meshes: grass.meshes,
+    stats: grass.stats,
+    update(t, camPos, focus, camera, cullDistance) {
+      grass.update(t, camPos, focus, camera, cullDistance);
+      flowers.update(camPos);
+    },
   };
 }
