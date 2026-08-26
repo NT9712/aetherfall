@@ -192,6 +192,19 @@ What the loop forced to be rebuilt:
 - **Steles** — tapered obelisks with stepped plinths, chiselled caps, gold
   finials, foundation rubble and moss, instead of brown boxes.
 
+### Performance notes
+
+`heightAt()` evaluates several octaves of fbm and costs ~8.6us. That is fine
+for gameplay queries, but per-frame systems that probe terrain hundreds of
+times cannot afford it -- occlusion culling alone was spending 7.86ms/frame,
+47% of a 60fps budget. `heightAtFast()` reads a bilinear lookup table filled
+during the heightmap bake (0.6us, 0.127m mean error), taking occlusion to
+0.55ms.
+
+Sector culling deliberately retains sectors that contain shadow casters when
+they fall inside the sun's shadow volume, even if the camera rejects them --
+otherwise objects beside or behind the camera stop casting shadows into view.
+
 ### Bugs the loop exposed
 
 1. **Broken toon ramp** — `makeGradientMap()` was called with no argument, so
@@ -205,6 +218,24 @@ What the loop forced to be rebuilt:
    0.132. Rebalanced with a sky-tinted fill so shadows read cool, not black.
 4. **HDR fireflies** — unclamped water specular fed the bloom pass.
 5. **Unclamped particle size** — size-attenuated motes could fill the screen.
+6. **Stale shadow shaders** — `USE_SHADOWMAP` is compiled into the program, so
+   toggling `renderer.shadowMap.enabled` without marking materials dirty left
+   shadows broken after the adaptive controller changed the effects level.
+7. **Culled shadow casters** — frustum-rejected sectors also disappear from the
+   shadow pass, deleting shadows cast from off-screen.
+8. **Bound clamp scaled Y** — `Vector3.multiplyScalar` on the island boundary
+   shrank the player's height, dragging them down while held against the ring.
+9. **Inert density slider** — the preset was only read at construction.
+
+### Test suite
+
+```bash
+node tools/move-unit.mjs      # controller: directions, speed, bounds, glide
+node tools/quality-test.mjs   # adaptive quality ladder behaviour
+node tools/verify-lean.mjs    # end-to-end: 7 shards, finale, no errors
+node tools/cull-test.mjs      # culling: triangles/draw calls saved
+node tools/critic.mjs review/*.png
+```
 
 ## Verification
 
