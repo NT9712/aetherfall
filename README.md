@@ -6,6 +6,7 @@ every mesh, texture, shader and note of music is generated procedurally at
 runtime.
 
 **▶ Play: https://aetherfall-seven.vercel.app**
+**◆ Source: https://github.com/NT9712/aetherfall**
 
 ## Run it
 
