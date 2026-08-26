@@ -47,6 +47,36 @@ export function createHUD() {
       <button id="btn-roam">Keep Wandering</button>
     </div>
 
+    <div id="perf">
+      <div id="perf-fps"><b>--</b> fps</div>
+      <div id="perf-cull"></div>
+    </div>
+
+    <div id="settings" class="hidden">
+      <div class="set-title">Graphics</div>
+      <label class="set-auto">
+        <input type="checkbox" id="set-auto" checked>
+        <span>Adaptive &mdash; match quality to framerate</span>
+      </label>
+      <div class="set-row">
+        <span class="set-label">Render Distance</span>
+        <input type="range" id="set-0" min="0" max="4" step="1" value="3">
+        <span class="set-val" id="val-0">High</span>
+      </div>
+      <div class="set-row">
+        <span class="set-label">Vegetation Density</span>
+        <input type="range" id="set-1" min="0" max="4" step="1" value="3">
+        <span class="set-val" id="val-1">High</span>
+      </div>
+      <div class="set-row">
+        <span class="set-label">Effects Quality</span>
+        <input type="range" id="set-2" min="0" max="4" step="1" value="3">
+        <span class="set-val" id="val-2">High</span>
+      </div>
+      <div class="set-hint">Density and distance rebuild nothing &mdash; they retune the
+        live scene. <b>Tab</b> closes.</div>
+    </div>
+
     <div id="vignette-frame"></div>
   `;
 
@@ -62,6 +92,19 @@ export function createHUD() {
 
   let toastTimer = null;
   let typeTimer = null;
+  const TIER = ['Potato', 'Low', 'Medium', 'High', 'Ultra'];
+  let onQuality = null;
+  let onAuto = null;
+  let perfAcc = 0;
+
+  for (let i = 0; i < 3; i++) {
+    $('set-' + i).addEventListener('input', (e) => {
+      const v = Number(e.target.value);
+      $('val-' + i).textContent = TIER[v];
+      if (onQuality) onQuality(i, v);
+    });
+  }
+  $('set-auto').addEventListener('change', (e) => { if (onAuto) onAuto(e.target.checked); });
 
   return {
     showTitle(onBegin) {
@@ -124,6 +167,33 @@ export function createHUD() {
     },
     get dialogueOpen() {
       return !$('dialogue').classList.contains('hidden');
+    },
+    onQualityChange(fn) { onQuality = fn; },
+    setAutoChecked(v) { $('set-auto').checked = v; },
+    onAutoChange(fn) { onAuto = fn; },
+    toggleSettings() {
+      const el2 = $('settings');
+      el2.classList.toggle('hidden');
+      return !el2.classList.contains('hidden');
+    },
+    // Reflect adaptive changes back into the sliders.
+    syncQuality(levels) {
+      for (let i = 0; i < 3; i++) {
+        $('set-' + i).value = String(levels[i]);
+        $('val-' + i).textContent = TIER[levels[i]];
+      }
+    },
+    setPerf(fps, levels, cullStats, grassStats, tris, calls) {
+      perfAcc++;
+      if (perfAcc % 12) return;         // throttle DOM writes
+      $('perf-fps').innerHTML = `<b>${Math.round(fps)}</b> fps`;
+      const c = cullStats || { drawn: 0, total: 0, byFrustum: 0, byOcclusion: 0, byDistance: 0 };
+      const g = grassStats || { drawn: 0, chunks: 0 };
+      $('perf-cull').innerHTML =
+        `sectors ${c.drawn}/${c.total} &middot; grass ${g.drawn}/${g.chunks}<br>` +
+        `culled: ${c.byDistance} far &middot; ${c.byFrustum} view &middot; ${c.byOcclusion} hidden` +
+        (tris ? `<br>${(tris / 1000).toFixed(0)}k tris &middot; ${calls} calls` : '');
+      this.syncQuality(levels);
     },
     showFinale() {
       $('finale').classList.remove('hidden');

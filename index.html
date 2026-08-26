@@ -143,6 +143,42 @@
     }
     #btn-roam:hover { background: rgba(70,104,150,0.55); box-shadow: 0 0 22px rgba(232,207,143,0.3); }
 
+    /* ---------- perf + settings ---------- */
+    #perf {
+      position: absolute; top: 22px; left: 26px;
+      font-family: 'Alegreya', serif; font-size: 12px; line-height: 1.5;
+      color: #b9cbdd; text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+      background: rgba(10,20,34,0.34); border: 1px solid rgba(220,200,150,0.22);
+      border-radius: 3px; padding: 7px 11px; backdrop-filter: blur(5px);
+    }
+    #perf b { color: #f0e6c8; font-size: 15px; font-weight: 700; }
+    #perf-cull { margin-top: 3px; color: #8fa6bd; font-size: 11px; }
+
+    #settings {
+      position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
+      pointer-events: auto;
+      width: min(430px, calc(100vw - 40px));
+      background: linear-gradient(180deg, rgba(12,22,38,0.92), rgba(8,15,27,0.95));
+      border: 1px solid rgba(222,202,152,0.5); border-radius: 4px;
+      padding: 18px 22px 14px; backdrop-filter: blur(9px);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.55);
+    }
+    .set-title {
+      font-family: 'Cinzel', serif; font-size: 14px; letter-spacing: 0.2em;
+      color: #e8cf8f; margin-bottom: 12px;
+    }
+    .set-auto { display: flex; align-items: center; gap: 8px; font-size: 13px;
+      color: #cfe0ef; margin-bottom: 14px; cursor: pointer; }
+    .set-auto input { accent-color: #e8cf8f; cursor: pointer; }
+    .set-row { display: grid; grid-template-columns: 116px 1fr 58px;
+      align-items: center; gap: 10px; margin-bottom: 9px; }
+    .set-label { font-size: 12px; color: #a9bccf; }
+    .set-val { font-size: 12px; color: #e8cf8f; text-align: right;
+      font-family: 'Cinzel', serif; letter-spacing: 0.05em; }
+    .set-row input[type=range] { width: 100%; accent-color: #e8cf8f; cursor: pointer; }
+    .set-hint { font-size: 11px; color: #7f93a8; margin-top: 10px; line-height: 1.5; }
+    .set-hint b { color: #d8c89a; }
+
     /* ---------- frame ---------- */
     #vignette-frame {
       position: absolute; inset: 0; pointer-events: none;

@@ -72,8 +72,15 @@ export function createMotes(scene) {
   });
 
   const t0 = performance.now() * 0.001;
+  const full = COUNT;
   return {
     points,
+    // Quality hook: draw only a fraction of the mote budget.
+    setDensity(f) {
+      const keep = Math.max(0, Math.min(1, f));
+      geo.setDrawRange(0, Math.round(full * keep));
+      points.visible = keep > 0.01;
+    },
     update(t, playerPos) {
       const arr = geo.attributes.position.array;
       for (let i = 0; i < COUNT; i++) {
