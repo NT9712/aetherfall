@@ -47,6 +47,25 @@ export function createHUD() {
       <button id="btn-roam">Keep Wandering</button>
     </div>
 
+    <div id="pause" class="hidden">
+      <div class="pause-card">
+        <div class="pause-eyebrow">Aetherfall Isle</div>
+        <h2>Paused</h2>
+        <div id="pause-progress"></div>
+        <div class="pause-actions">
+          <button id="btn-resume">Resume</button>
+          <button id="btn-graphics">Graphics</button>
+          <button id="btn-mute">Sound: On</button>
+          <button id="btn-title">Return to Title</button>
+        </div>
+        <div class="pause-controls">
+          <span><b>WASD</b> move</span><span><b>Shift</b> sprint</span>
+          <span><b>Space</b> jump / glide</span><span><b>E</b> interact</span>
+          <span><b>Tab</b> graphics</span><span><b>Esc</b> pause</span>
+        </div>
+      </div>
+    </div>
+
     <div id="perf">
       <div id="perf-fps"><b>--</b> fps</div>
       <div id="perf-cull"></div>
@@ -92,6 +111,7 @@ export function createHUD() {
 
   let toastTimer = null;
   let typeTimer = null;
+  let onResume = null, onTitle = null, onMute = null;
   const TIER = ['Potato', 'Low', 'Medium', 'High', 'Ultra'];
   let onQuality = null;
   let onAuto = null;
@@ -105,6 +125,10 @@ export function createHUD() {
     });
   }
   $('set-auto').addEventListener('change', (e) => { if (onAuto) onAuto(e.target.checked); });
+  $('btn-resume').addEventListener('click', () => { if (onResume) onResume(); });
+  $('btn-graphics').addEventListener('click', () => $('settings').classList.toggle('hidden'));
+  $('btn-mute').addEventListener('click', () => { if (onMute) onMute(); });
+  $('btn-title').addEventListener('click', () => { if (onTitle) onTitle(); });
 
   return {
     showTitle(onBegin) {
@@ -168,6 +192,22 @@ export function createHUD() {
     get dialogueOpen() {
       return !$('dialogue').classList.contains('hidden');
     },
+    // ---- pause menu ----
+    onResumeClick(fn) { onResume = fn; },
+    onTitleClick(fn) { onTitle = fn; },
+    onMuteClick(fn) { onMute = fn; },
+    setMuteLabel(on) { $('btn-mute').textContent = `Sound: ${on ? 'On' : 'Off'}`; },
+    openPause(shards, total) {
+      $('pause-progress').innerHTML =
+        `<span class="pause-shards">${shards} / ${total}</span> shards recovered`;
+      $('pause').classList.remove('hidden');
+    },
+    closePause() {
+      $('pause').classList.add('hidden');
+      $('settings').classList.add('hidden');
+    },
+    get paused() { return !$('pause').classList.contains('hidden'); },
+
     onQualityChange(fn) { onQuality = fn; },
     setAutoChecked(v) { $('set-auto').checked = v; },
     onAutoChange(fn) { onAuto = fn; },

@@ -50,6 +50,7 @@ Requires a browser with WebGL2.
 | `Mouse` | Look (click to capture pointer) · `Wheel` zoom |
 | `M` | Toggle ambience |
 | `Tab` | Graphics settings |
+| `Esc` | Pause menu |
 
 ## The game
 
@@ -231,6 +232,7 @@ otherwise objects beside or behind the camera stop casting shadows into view.
 
 ```bash
 node tools/move-unit.mjs      # controller: directions, speed, bounds, glide
+node tools/pause-test.mjs     # pause: freeze, resume, finale interaction
 node tools/quality-test.mjs   # adaptive quality ladder behaviour
 node tools/verify-lean.mjs    # end-to-end: 7 shards, finale, no errors
 node tools/cull-test.mjs      # culling: triangles/draw calls saved

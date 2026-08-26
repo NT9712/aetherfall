@@ -202,6 +202,48 @@ input.onInteract = () => {
   }
 };
 
+// ---------------------------------------------------------------- pause
+let paused = false;
+
+function setPaused(on) {
+  if (paused === on || !started) return;
+  paused = on;
+  if (on) {
+    input.keys.clear();            // don't resume mid-stride on a held key
+    input.unlock();
+    hud.setMuteLabel(!muted);
+    hud.openPause(shards.collectedCount, 7);
+    ambience.ctx?.suspend?.();
+  } else {
+    hud.closePause();
+    ambience.resume();
+    input.lock();                  // the click that resumed counts as a gesture
+  }
+}
+
+hud.onResumeClick(() => setPaused(false));
+hud.onTitleClick(() => location.reload());
+hud.onMuteClick(() => {
+  muted = !ambience.toggle();
+  hud.setMuteLabel(!muted);
+});
+
+// Browsers reserve Escape to release pointer lock and swallow the keydown, so
+// losing the lock is the reliable pause signal. Ignore the release we perform
+// ourselves when opening a menu.
+document.addEventListener('pointerlockchange', () => {
+  if (!started || paused) return;
+  if (finaleShown) return;         // the finale panel wants the cursor free
+  if (document.pointerLockElement !== renderer.domElement && !hud.dialogueOpen) {
+    setPaused(true);
+  }
+});
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Escape' || !started || finaleShown) return;
+  e.preventDefault();
+  setPaused(!paused);
+});
+
 // Slider + adaptive wiring.
 hud.onQualityChange((i, v) => { quality.setAuto(false); hud.setAutoChecked(false); quality.setLevel(i, v); });
 hud.onAutoChange((on) => quality.setAuto(on));
@@ -268,11 +310,14 @@ function frame() {
 function tick() {
   renderer.info.reset();
   const raw = Math.min(clock.getDelta(), 0.05);
-  const dt = fixedDt !== null ? fixedDt : raw;
+  let dt = fixedDt !== null ? fixedDt : raw;
+  // Paused: hold world time still so wind, water and animation freeze, but
+  // keep drawing so the menu sits over a live frame.
+  if (paused) dt = 0;
   simTime += dt;
   const t = simTime;
 
-  if (started) {
+  if (started && !paused) {
     controller.update(dt);
 
     // Shards pickup + finale.
@@ -283,7 +328,11 @@ function tick() {
       hud.setShards(shards.collectedCount);
       if (shards.collectedCount >= 7) {
         setTimeout(() => {
-          if (!finaleShown) { finaleShown = true; hud.showFinale(); }
+          if (!finaleShown) {
+            finaleShown = true;
+            input.unlock();        // release the cursor so the panel is clickable
+            hud.showFinale();
+          }
         }, 900);
       } else {
         hud.toast(`Aether Shard — ${7 - shards.collectedCount} remaining`, 2400);
