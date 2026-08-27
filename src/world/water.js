@@ -18,6 +18,9 @@ export function createWater(scene, heightTex) {
     uSunDir: { value: SUN_DIR.clone() },
     uZenith: { value: PALETTE.zenith.clone() },
     uHorizon: { value: PALETTE.horizon.clone() },
+    uShallow: { value: new THREE.Color(0.30, 0.82, 0.78) },
+    uMid:     { value: new THREE.Color(0.14, 0.66, 0.74) },
+    uDeep:    { value: new THREE.Color(0.06, 0.42, 0.64) },
     uFogColor: { value: PALETTE.fog.clone() },
     uFogNear: { value: 40 },
     uFogFar: { value: 245 },
@@ -46,7 +49,7 @@ export function createWater(scene, heightTex) {
       varying vec3 vWorldPos;
       uniform float uTime, uHMin, uHRange, uFogNear, uFogFar;
       uniform sampler2D uHeightMap;
-      uniform vec3 uSunDir, uZenith, uHorizon, uFogColor, uCamPos;
+      uniform vec3 uSunDir, uZenith, uHorizon, uFogColor, uCamPos, uShallow, uMid, uDeep;
       ${SHADER_COMMON}
 
       // Animated ripple normal from finite differences of layered noise.
@@ -78,10 +81,10 @@ export function createWater(scene, heightTex) {
         float terrH = sampleTerrain(uHeightMap, p, uHMin, uHRange);
         float depth = max(vWorldPos.y - terrH, 0.0);
 
-        // Genshin-style turquoise ramp — saturated, never gray.
-        vec3 shallowC = vec3(0.30, 0.82, 0.78);
-        vec3 midC     = vec3(0.14, 0.66, 0.74);
-        vec3 deepC    = vec3(0.06, 0.42, 0.64);
+        // Water ramp — saturated, never gray. Recoloured per world.
+        vec3 shallowC = uShallow;
+        vec3 midC     = uMid;
+        vec3 deepC    = uDeep;
         vec3 base = mix(shallowC, midC, smoothstep(0.15, 1.8, depth));
         base = mix(base, deepC, smoothstep(1.8, 7.0, depth));
 
@@ -132,6 +135,13 @@ export function createWater(scene, heightTex) {
     update(t, camPos) {
       uniforms.uTime.value = t;
       uniforms.uCamPos.value.copy(camPos);
+    },
+    applyPalette(c) {
+      if (c.waterShallow) uniforms.uShallow.value.setRGB(...c.waterShallow);
+      if (c.waterMid) uniforms.uMid.value.setRGB(...c.waterMid);
+      if (c.waterDeep) uniforms.uDeep.value.setRGB(...c.waterDeep);
+      if (c.skyZenith) uniforms.uZenith.value.set(c.skyZenith);
+      if (c.skyHorizon) uniforms.uHorizon.value.set(c.skyHorizon);
     },
   };
 }

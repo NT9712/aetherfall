@@ -18,6 +18,14 @@ function makeGradientMap(steps = 4) {
   return tex;
 }
 
+const terrainColors = [
+  new THREE.Color('#4d8220'), new THREE.Color('#8ab34a'), new THREE.Color('#64943b'),
+  new THREE.Color('#6b543b'), new THREE.Color('#e7d395'), new THREE.Color('#7b7162'),
+  new THREE.Color('#544e45'), new THREE.Color('#eef5f8'), new THREE.Color('#247a80'),
+  new THREE.Color('#a8b347'), new THREE.Color('#3c7849'), new THREE.Color('#ffffff'),
+  new THREE.Color('#ffffff'),
+];
+
 export function createTerrain(scene) {
   const segs = 220;
   const geo = new THREE.PlaneGeometry(WORLD_EXTENT, WORLD_EXTENT, segs, segs);
@@ -53,6 +61,7 @@ export function createTerrain(scene) {
         #include <common>
         varying vec3 vWorldPos;
         varying vec3 vWorldNormal;
+        uniform vec3 uTer[13];
         ${SHADER_COMMON}
         // Multi-octave fbm for surface detail.
         float fbm3(vec2 p){
@@ -90,31 +99,28 @@ export function createTerrain(scene) {
           float detail = vnoise(vWorldPos.xz * 0.31);
           float fine   = fbm3(vWorldPos.xz * 1.1);
 
-          vec3 grassA = vec3(0.300, 0.512, 0.196);
-          vec3 grassB = vec3(0.540, 0.700, 0.290);
-          vec3 grassC = vec3(0.395, 0.580, 0.230);
+          vec3 grassA = uTer[0], grassB = uTer[1], grassC = uTer[2];
           vec3 grass = mix(grassA, grassB, smoothstep(0.28, 0.80, macro));
           grass = mix(grass, grassC, meso * 0.55);
-          grass = mix(grass, vec3(0.66, 0.70, 0.28), smoothstep(0.66, 0.95, macro) * 0.30);
-          grass = mix(grass, vec3(0.26, 0.47, 0.22), smoothstep(0.78, 0.98, 1.0 - macro) * 0.18);
+          grass = mix(grass, uTer[9], smoothstep(0.66, 0.95, macro) * 0.30);
+          grass = mix(grass, uTer[10], smoothstep(0.78, 0.98, 1.0 - macro) * 0.18);
           grass *= 0.86 + 0.28 * fine;
 
           // Worn dirt showing through on gentle rises and trails.
-          vec3 dirt = vec3(0.42, 0.33, 0.23) * (0.85 + 0.3 * fine);
+          vec3 dirt = uTer[3] * (0.85 + 0.3 * fine);
           float dirtM = smoothstep(0.62, 0.86, fbm3(vWorldPos.xz * 0.045 + 11.0)) *
                         (1.0 - smoothstep(0.35, 0.6, steep)) * 0.75;
 
-          vec3 sand = vec3(0.906, 0.827, 0.584) * (0.90 + 0.20 * detail);
+          vec3 sand = uTer[4] * (0.90 + 0.20 * detail);
           float sandM = (1.0 - smoothstep(0.9, 2.0, h)) * (1.0 - smoothstep(0.55, 0.75, steep));
           sandM = max(sandM, 1.0 - smoothstep(-1.5, 0.4, h));
 
-          vec3 rockA = vec3(0.482, 0.443, 0.384);
-          vec3 rockB = vec3(0.330, 0.305, 0.270);
+          vec3 rockA = uTer[5], rockB = uTer[6];
           float strata = sin(h * 1.7 + macro * 4.0) * 0.5 + 0.5;
           vec3 rock = mix(rockA, rockB, strata) * (0.82 + 0.34 * fine);
           float rockM = smoothstep(0.34, 0.55, steep + detail * 0.10);
 
-          vec3 snow = vec3(0.93, 0.96, 0.97) * (0.92 + 0.12 * fine);
+          vec3 snow = uTer[7] * (0.92 + 0.12 * fine);
           float snowM = smoothstep(21.0, 24.5, h + detail * 1.2) *
                         (1.0 - smoothstep(0.62, 0.8, steep));
 
@@ -136,7 +142,7 @@ export function createTerrain(scene) {
           // Slight hue shift in the clumps so it isn't just brightness noise.
           albedo.g += tuft * 0.05 * grassy;
 
-          vec3 wetTint = vec3(0.14, 0.48, 0.50);
+          vec3 wetTint = uTer[8];
           albedo = mix(albedo, wetTint, (1.0 - smoothstep(-2.0, 0.05, h)) * 0.7);
 
           // Cavity AO: creases and steep folds darken, ridges catch light.
@@ -152,5 +158,20 @@ export function createTerrain(scene) {
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   scene.add(mesh);
-  return { mesh, update() {} };
+  return {
+    mesh,
+    update() {},
+    // Recolor from a world palette (an array of 11 rgb triples).
+    applyPalette(c) {
+      const idx = { grassA:0, grassB:1, grassC:2, dirt:3, sand:4, rockA:5, rockB:6, snow:7, wet:8, warm:9, cool:10 };
+      for (const [k, i] of Object.entries(idx)) {
+        if (!c[k]) continue;
+        const v = c[k];
+        terrainColors[i].setRGB(v[0], v[1], v[2]);
+      }
+      // Push to the injected shader by bumping needsUpdate on the material.
+      mat.needsUpdate = true;
+    },
+    colors: terrainColors,
+  };
 }

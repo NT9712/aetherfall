@@ -7,6 +7,8 @@ import { createSky, createClouds } from './world/sky.js';
 import { createVegetation } from './world/vegetation.js';
 import { createShards } from './world/shards.js';
 import { createStones } from './world/stones.js';
+import { createWorldProps } from './world/props.js';
+import { WORLDS, FINALE } from './data/worlds.js';
 import { buildHeightTexture, heightAt, SUN_DIR, PALETTE } from './world/heightfield.js';
 import { createCharacter } from './player/character.js';
 import { Controller } from './player/controller.js';
@@ -82,6 +84,8 @@ const quality = new Quality({ onChange: (s) => applyQuality(s) });
 const vegetation = createVegetation(scene, heightTex, culler, quality.settings());
 const stones = createStones(scene);
 for (const st of stones.items) culler.add(st.group, st.x, st.z, 12);
+let propsState = createWorldProps(scene, WORLDS[0]);
+for (const gate of propsState.gates) culler.add(gate.group, gate.x, gate.z, 12);
 const shards = createShards(scene);
 const motes = createMotes(scene);
 const bursts = createBursts(scene);
@@ -105,7 +109,9 @@ hud.showTitle(() => {
   started = true;
   controller.enabled = true;
   hud.enterWorld();
-  hud.setShards(0);
+  hud.setGoal(WORLDS[worldIndex].sub);
+  hud.setShards(0, WORLDS[worldIndex].shards.length);
+  hud.setFinaleText(FINALE[WORLDS[worldIndex].id] || FINALE.aetherfall);
   hud.toast('Seek the pillars of light — they mark fallen shards', 4200);
   ambience.start();
   input.lock();
@@ -173,6 +179,17 @@ window.__capture = (n = 2) => {
   return renderer.domElement.toDataURL('image/png');
 };
 window.__hideWater = () => { water.mesh.visible = false; };
+window.__worldInfo = () => ({
+  index: worldIndex, id: WORLDS[worldIndex].id, name: WORLDS[worldIndex].name,
+  shardLen: WORLDS[worldIndex].shards.length,
+  stones: stones.items.length,
+  shardCount: shards.collectedCount,
+  fog: '#' + scene.fog.color.getHexString(),
+  sky: '#' + sky.material.uniforms.uZenith.value.getHexString(),
+  spawn: [WORLDS[worldIndex].spawn[0], WORLDS[worldIndex].spawn[1]],
+  player: [Math.round(controller.pos.x), Math.round(controller.pos.z)],
+});
+window.__jumpWorld = (i) => setWorld(i);
 window.__playerState = () => ({
   x: controller.pos.x, y: controller.pos.y, z: controller.pos.z,
   facing: controller.facing, grounded: controller.grounded,
@@ -196,11 +213,69 @@ window.__toggleShadows = (on) => { renderer.shadowMap.enabled = on; scene.traver
 input.onInteract = () => {
   if (!started) return;
   if (hud.dialogueOpen) { hud.closeDialogue(); return; }
+  if (hud.worldSelectOpen) { hud.closeWorldSelect(); return; }
+  // The Embergate takes priority: it is the door to other worlds.
+  const gate = nearestGate();
+  if (gate && Math.hypot(controller.pos.x - gate.x, controller.pos.z - gate.z) < 4.0) {
+    hud.openWorldSelect(WORLDS, WORLDS[worldIndex].id);
+    return;
+  }
   const st = stones.nearest(controller.pos);
   if (st) {
     hud.openDialogue(st.name, st.text);
   }
 };
+function nearestGate() {
+  let best = null, bestD = 4.0;
+  for (const g of propsState.gates) {
+    const d = Math.hypot(controller.pos.x - g.x, controller.pos.z - g.z);
+    if (d < bestD) { bestD = d; best = g; }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------- worlds
+let worldIndex = 0;
+function setWorld(i) {
+  worldIndex = ((i % WORLDS.length) + WORLDS.length) % WORLDS.length;
+  const w = WORLDS[worldIndex];
+  const p = w.palette;
+
+  // Recolour the shared shaders.
+  sky.applyPalette(p);
+  water.applyPalette(p);
+  terrain.applyPalette(p);
+  scene.fog.color.set(p.fog);
+  PALETTE.fog.set(p.fog);
+
+  // Swap the journey content.
+  stones.rebuild(w.stones);
+  shards.rebuild(w.shards);
+  for (const st of stones.items) culler.add(st.group, st.x, st.z, 12);
+  hud.setShards(0);
+  hud.setGoal(w.sub);
+  started && hud.enterWorld();
+
+  // Rebuild world props (arch, fire, posts).
+  for (const g of propsState.gates) scene.remove(g.group);
+  for (const g of propsState.ambients) scene.remove(g.group);
+  propsState = createWorldProps(scene, w);
+  for (const gate of propsState.gates) culler.add(gate.group, gate.x, gate.z, 12);
+
+  // Move the player.
+  controller.pos.set(w.spawn[0], heightAt(w.spawn[0], w.spawn[1]), w.spawn[1]);
+  controller.vy = 0; controller.velH.set(0, 0);
+
+  finaleShown = false;
+  // Announce.
+  if (started) hud.toast(`Arrived at ${w.name} — ${w.tagline}`, 4200);
+  if (started) {
+    const f = FINALE[w.id];
+    if (f) hud.setFinaleText(f);
+  }
+}
+
+hud.onWorldPick((i) => setWorld(i));
 
 // ---------------------------------------------------------------- pause
 let paused = false;
@@ -212,7 +287,7 @@ function setPaused(on) {
     input.keys.clear();            // don't resume mid-stride on a held key
     input.unlock();
     hud.setMuteLabel(!muted);
-    hud.openPause(shards.collectedCount, 7);
+    hud.openPause(shards.collectedCount, WORLDS[worldIndex].shards.length);
     ambience.ctx?.suspend?.();
   } else {
     hud.closePause();
@@ -325,8 +400,9 @@ function tick() {
     if (picked) {
       bursts.spawn(picked.x, picked.core.position.y + 1, picked.z);
       ambience.pickupSting();
-      hud.setShards(shards.collectedCount);
-      if (shards.collectedCount >= 7) {
+      hud.setShards(shards.collectedCount, WORLDS[worldIndex].shards.length);
+      const need = WORLDS[worldIndex].shards.length;
+      if (shards.collectedCount >= need) {
         setTimeout(() => {
           if (!finaleShown) {
             finaleShown = true;
@@ -335,13 +411,17 @@ function tick() {
           }
         }, 900);
       } else {
-        hud.toast(`Aether Shard — ${7 - shards.collectedCount} remaining`, 2400);
+        hud.toast(`Shard recovered — ${need - shards.collectedCount} remaining`, 2400);
       }
     }
 
     hud.setStamina(controller.stamina / 100);
-    const st = hud.dialogueOpen ? null : stones.nearest(controller.pos);
-    hud.setPrompt(st ? `[ E ]  Read ${st.name}` : null);
+    if (!hud.dialogueOpen && !hud.worldSelectOpen) {
+      const gate = nearestGate();
+      const nearGate = gate && Math.hypot(controller.pos.x - gate.x, controller.pos.z - gate.z) < 4.0;
+      const st = stones.nearest(controller.pos);
+      hud.setPrompt(nearGate ? '[ E ]  Cross the Embergate' : (st ? `[ E ]  Read ${st.name}` : null));
+    }
 
     // Sun shadow rig follows the player.
     sun.position.set(

@@ -21,12 +21,14 @@ function makeGlowTexture() {
   return tex;
 }
 
-export function createShards(scene) {
+export const SHARD_DATA = SHARDS;   // default journey (kept for compat)
+
+export function createShards(scene, shardList = SHARDS) {
   const group = new THREE.Group();
   const glowTex = makeGlowTexture();
   const items = [];
 
-  for (const [x, z] of SHARDS) {
+  for (const [x, z] of shardList) {
     const baseY = Math.max(heightAt(x, z), 0.5);
 
     // Crystal core — HDR-bright so bloom picks it up.
@@ -91,6 +93,42 @@ export function createShards(scene) {
 
   return {
     group,
+    rebuild(next) {
+      // Remove all current shard objects and start fresh for another world.
+      for (const s of items) { scene.remove(s.core, s.beam, s.ring); s.core.geometry.dispose(); }
+      items.length = 0;
+      collectedCount = 0;
+      next.forEach(([x, z]) => {
+        const baseY = Math.max(heightAt(x, z), 0.5);
+        const core = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.42, 0),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 4.5, 6.5) })
+        );
+        core.position.set(x, baseY + 1.6, z);
+        const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: glowTex, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
+        halo.scale.setScalar(3.2);
+        core.add(halo);
+        const beamM = new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+          uniforms: { uTime: { value: 0 } },
+          vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+          fragmentShader: `varying vec2 vUv; uniform float uTime;
+            void main(){ float fade=pow(vUv.y,1.6); float pulse=0.75+0.25*sin(uTime*2.0-vUv.y*6.0);
+              gl_FragColor=vec4(vec3(0.45,0.85,1.0), fade*0.28*pulse); }`,
+        });
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.55, 90, 12, 1, true), beamM);
+        beam.position.set(x, baseY + 45, z);
+        beam.renderOrder = 2;
+        const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.55, 40),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(0.7, 1.8, 2.6), transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }));
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(x, baseY + 0.06, z);
+        scene.add(core, beam, ring);
+        group.add(core);
+        items.push({ x, z, baseY, core, beam, ring, collected: false, animT: 0 });
+      });
+    },
     get collectedCount() { return collectedCount; },
     // Returns the shard that was picked up this frame, if any.
     update(t, dt, playerPos) {

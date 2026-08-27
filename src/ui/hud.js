@@ -26,7 +26,7 @@ export function createHUD() {
     </div>
 
     <div id="tracker" class="panel hidden">
-      <div class="tracker-title">✦ ${WORLD.goal}</div>
+      <div id="tracker-title" class="tracker-title">✦ ${WORLD.goal}</div>
       <div id="shard-pips"></div>
     </div>
 
@@ -43,7 +43,7 @@ export function createHUD() {
 
     <div id="finale" class="hidden">
       <h2>The Starlace Reborn</h2>
-      <p>${FINALE_TEXT.replaceAll('\n', '<br>')}</p>
+      <p id="finale-text">${FINALE_TEXT.replaceAll('\n', '<br>')}</p>
       <button id="btn-roam">Keep Wandering</button>
     </div>
 
@@ -63,6 +63,15 @@ export function createHUD() {
           <span><b>Space</b> jump / glide</span><span><b>E</b> interact</span>
           <span><b>Tab</b> graphics</span><span><b>Esc</b> pause</span>
         </div>
+      </div>
+    </div>
+
+    <div id="world-select" class="hidden">
+      <div class="ws-card">
+        <div class="ws-eyebrow">The Embergate remembers all the skies</div>
+        <h2>Choose a World</h2>
+        <div id="ws-list"></div>
+        <div class="ws-hint">Each world holds its own lost shards and its own stories.</div>
       </div>
     </div>
 
@@ -103,6 +112,7 @@ export function createHUD() {
 
   // Shard pips in tracker.
   const pipsEl = $('shard-pips');
+  const finaleTextEl = $('finale-text');
   for (let i = 0; i < 7; i++) {
     const pip = document.createElement('span');
     pip.className = 'pip';
@@ -111,7 +121,7 @@ export function createHUD() {
 
   let toastTimer = null;
   let typeTimer = null;
-  let onResume = null, onTitle = null, onMute = null;
+  let onResume = null, onTitle = null, onMute = null, onWorld = null;
   const TIER = ['Potato', 'Low', 'Medium', 'High', 'Ultra'];
   let onQuality = null;
   let onAuto = null;
@@ -141,9 +151,15 @@ export function createHUD() {
     enterWorld() {
       $('tracker').classList.remove('hidden');
     },
-    setShards(n) {
+    setShards(n, total) {
+      const N = total ?? pipsEl.children.length;
+      while (pipsEl.children.length < N) {
+        const pip = document.createElement('span'); pip.className = 'pip'; pipsEl.appendChild(pip);
+      }
+      while (pipsEl.children.length > N) { pipsEl.lastChild.remove(); }
       [...pipsEl.children].forEach((p, i) => p.classList.toggle('lit', i < n));
     },
+    setFinaleText(text) { finaleTextEl.innerHTML = text.replaceAll('\n', '<br>'); },
     setStamina(frac) {
       const wrap = $('stamina-wrap');
       if (frac >= 0.999) wrap.classList.add('hidden');
@@ -207,6 +223,27 @@ export function createHUD() {
       $('settings').classList.add('hidden');
     },
     get paused() { return !$('pause').classList.contains('hidden'); },
+
+    // ---- world select ----
+    onWorldPick(fn) { onWorld = fn; },
+    openWorldSelect(worlds, currentId) {
+      const list = $('ws-list');
+      list.innerHTML = '';
+      worlds.forEach((w, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'ws-item' + (w.id === currentId ? ' current' : '');
+        btn.innerHTML = `<span class="ws-name">${w.name}</span>
+                         <span class="ws-tag">${w.tagline}</span>`;
+        btn.addEventListener('click', () => { this.closeWorldSelect(); if (onWorld) onWorld(i); });
+        list.appendChild(btn);
+      });
+      $('world-select').classList.remove('hidden');
+    },
+    closeWorldSelect() { $('world-select').classList.add('hidden'); },
+    get worldSelectOpen() { return !$('world-select').classList.contains('hidden'); },
+    setGoal(text) {
+      $('tracker-title').textContent = '✦ ' + text;
+    },
 
     onQualityChange(fn) { onQuality = fn; },
     setAutoChecked(v) { $('set-auto').checked = v; },

@@ -103,6 +103,13 @@ export function createSky(scene) {
   dome.renderOrder = -1;
   scene.add(dome);
   dome.tick = (t) => { mat.uniforms.uTime.value = t; };
+  dome.applyPalette = (c) => {
+    if (c.skyZenith) mat.uniforms.uZenith.value.set(c.skyZenith);
+    if (c.skyHorizon) mat.uniforms.uHorizon.value.set(c.skyHorizon);
+    if (c.sunTint) mat.uniforms.uSunTint.value.set(c.sunTint);
+    if (c.cloudLit) mat.uniforms.uCloudLit.value.set(c.cloudLit);
+    if (c.cloudShade) mat.uniforms.uCloudShade.value.set(c.cloudShade);
+  };
   return dome;
 }
 
