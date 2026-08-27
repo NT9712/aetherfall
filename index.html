@@ -222,6 +222,40 @@
     .ws-tag { font-family: 'Alegreya', serif; font-style: italic; font-size: 13px; color: #a9bccf; }
     .ws-hint { font-size: 12px; color: #7f93a8; margin-top: 16px; }
 
+    /* ---------- combat ---------- */
+    #health-wrap {
+      position: absolute; bottom: 96px; left: 50%; transform: translateX(-50%);
+      width: 190px; text-align: center;
+    }
+    #health-track {
+      height: 9px; border-radius: 5px; overflow: hidden;
+      background: rgba(8,16,28,0.55); border: 1px solid rgba(230,210,180,0.4);
+    }
+    #health-bar {
+      height: 100%; width: 100%;
+      background: linear-gradient(90deg, #e25b4e, #ff7a6a);
+      box-shadow: 0 0 8px rgba(255,90,70,0.6); transition: width 0.1s linear;
+    }
+    #health-wrap.low #health-bar { background: linear-gradient(90deg,#c23a2c,#ff5040); }
+    #enemy-tally { margin-top: 6px; font-family: 'Cinzel', serif; font-size: 12px;
+      letter-spacing: 0.14em; color: #d8c89a; text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+
+    #death {
+      position: absolute; inset: 0; pointer-events: auto;
+      display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at 50% 45%, rgba(60,10,30,0.5), rgba(4,8,18,0.9));
+      backdrop-filter: blur(3px); animation: fadeIn 0.3s ease both;
+    }
+    .die-card { width: min(380px, calc(100vw - 40px)); text-align: center;
+      background: linear-gradient(180deg, rgba(30,14,26,0.95), rgba(14,8,18,0.97));
+      border: 1px solid rgba(200,120,110,0.5); border-radius: 4px; padding: 30px 32px 26px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.6); }
+    .die-card p { color: #c9b8bd; font-size: 14px; line-height: 1.6; margin: 10px 0 22px; }
+    #btn-revive { font-family: 'Cinzel', serif; font-size: 14px; letter-spacing: 0.18em;
+      padding: 12px 36px; color: #f5ecd7; background: rgba(120,60,60,0.4);
+      border: 1px solid rgba(255,180,150,0.5); border-radius: 2px; cursor: pointer; transition: all .2s; }
+    #btn-revive:hover { background: rgba(160,80,70,0.55); box-shadow: 0 0 22px rgba(255,150,120,0.3); }
+
     /* ---------- perf + settings ---------- */
     #perf {
       position: absolute; top: 22px; left: 26px;

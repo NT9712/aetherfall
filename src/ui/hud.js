@@ -75,6 +75,20 @@ export function createHUD() {
       </div>
     </div>
 
+    <div id="health-wrap" class="hidden">
+      <div id="health-track"><div id="health-bar"></div></div>
+      <div id="enemy-tally"></div>
+    </div>
+
+    <div id="death" class="hidden">
+      <div class="die-card">
+        <div class="ws-eyebrow">The dark took you</div>
+        <h2>You Were Overwhelmed</h2>
+        <p>The isle breathes you back to the shore, whole but humbled.</p>
+        <button id="btn-revive">Rise Again</button>
+      </div>
+    </div>
+
     <div id="perf">
       <div id="perf-fps"><b>--</b> fps</div>
       <div id="perf-cull"></div>
@@ -121,7 +135,7 @@ export function createHUD() {
 
   let toastTimer = null;
   let typeTimer = null;
-  let onResume = null, onTitle = null, onMute = null, onWorld = null;
+  let onResume = null, onTitle = null, onMute = null, onWorld = null, onRevive = null;
   const TIER = ['Potato', 'Low', 'Medium', 'High', 'Ultra'];
   let onQuality = null;
   let onAuto = null;
@@ -139,6 +153,7 @@ export function createHUD() {
   $('btn-graphics').addEventListener('click', () => $('settings').classList.toggle('hidden'));
   $('btn-mute').addEventListener('click', () => { if (onMute) onMute(); });
   $('btn-title').addEventListener('click', () => { if (onTitle) onTitle(); });
+  $('btn-revive').addEventListener('click', () => { if (onRevive) onRevive(); });
 
   return {
     showTitle(onBegin) {
@@ -244,6 +259,24 @@ export function createHUD() {
     setGoal(text) {
       $('tracker-title').textContent = '✦ ' + text;
     },
+
+    // ---- combat ----
+    onReviveClick(fn) { onRevive = fn; },
+    setHP(frac) {
+      const wrap = $('health-wrap');
+      if (frac >= 0.999) { wrap.classList.add('hidden'); return; }
+      wrap.classList.remove('hidden');
+      $('health-bar').style.width = `${Math.max(0, frac) * 100}%`;
+      wrap.classList.toggle('low', frac < 0.3);
+    },
+    setEnemyTally(active, total) {
+      $('enemy-tally').textContent = total ? `Wraiths ${active}/${total}` : '';
+    },
+    showDeath() {
+      $('health-wrap').classList.add('hidden');
+      $('death').classList.remove('hidden');
+    },
+    hideDeath() { $('death').classList.add('hidden'); },
 
     onQualityChange(fn) { onQuality = fn; },
     setAutoChecked(v) { $('set-auto').checked = v; },

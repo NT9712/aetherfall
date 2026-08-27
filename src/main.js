@@ -17,6 +17,7 @@ import { createMotes, createBursts, createBlobShadow } from './fx/particles.js';
 import { createPost } from './fx/post.js';
 import { createHUD } from './ui/hud.js';
 import { Quality } from './core/quality.js';
+import { Combat } from './player/combat.js';
 import { CullingManager } from './core/culling.js';
 import { Ambience } from './audio/ambience.js';
 
@@ -95,6 +96,17 @@ const playerBlob = createBlobShadow(scene);
 const character = createCharacter(scene);
 const input = new Input(renderer.domElement);
 const controller = new Controller(camera, input, character);
+const combat = new Combat(scene, {
+  getPlayer: () => controller.pos,
+  onDeath: () => {
+    input.unlock();
+    hud.showDeath();
+  },
+});
+// Provide a live player handle (position + facing) each update.
+combat.focus = controller.pos;
+Object.defineProperty(controller.pos, 'facing', {
+  get: () => controller.facing, configurable: true });
 
 // ---------------------------------------------------------------- post/ui/audio
 const post = createPost(renderer, scene, camera);
@@ -120,6 +132,12 @@ hud.showTitle(() => {
 renderer.domElement.addEventListener('click', () => {
   if (started && !input.locked) input.lock();
 });
+renderer.domElement.addEventListener('mousedown', (e) => {
+  if (e.button !== 0 || !started || paused) return;
+  if (!input.locked) { input.lock(); return; }
+  combat.swing();
+});
+
 
 input.onGliderToggle = () => {
   if (!started || hud.dialogueOpen) return;
@@ -256,6 +274,9 @@ function setWorld(i) {
   hud.setGoal(w.sub);
   started && hud.enterWorld();
 
+  combat.rebuild(w);
+  combat.density = quality.levels[1];
+
   // Rebuild world props (arch, fire, posts).
   for (const g of propsState.gates) scene.remove(g.group);
   for (const g of propsState.ambients) scene.remove(g.group);
@@ -327,7 +348,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ------------------------------------------------------------- quality apply
-function applyQuality(cfg) {
+function applyQuality(cfg, levels = [3, 3, 3]) {
   // Distance: fog band + sector cull ring.
   scene.fog.near = cfg.distance.fogNear;
   scene.fog.far = cfg.distance.fogFar;
@@ -361,9 +382,9 @@ function applyQuality(cfg) {
   post.bloom.enabled = cfg.effects.bloom;
   motes.setDensity(cfg.effects.motes);
 
-  // Density: shrink live instance counts (previously this preset only applied
-  // at construction, so the slider did nothing after startup).
+  // Density: shrink live instance counts and thin the wraiths that spawn.
   vegetation.setDensity(cfg.density);
+  if (combat) combat.density = levels[1];
 }
 
 // ---------------------------------------------------------------- loop
@@ -434,6 +455,10 @@ function tick() {
 
     motes.update(t, controller.pos);
     culler.update(camera, camera.position, controller.pos, SHADOW_RADIUS);
+    const hp = combat.update(dt, controller.pos);
+    hud.setHP(hp / 100);
+    const aliveEnemies = combat.pool.filter((p) => p.enabled).length;
+    hud.setEnemyTally(aliveEnemies, combat.active ? combat.maxEnemies : 0);
     playerBlob.update(controller.pos, heightAt(controller.pos.x, controller.pos.z));
 
     // Finale aurora: sky warms as reward.
