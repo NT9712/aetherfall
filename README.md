@@ -52,6 +52,29 @@ Requires a browser with WebGL2.
 | `Tab` | Graphics settings |
 | `Esc` | Pause menu |
 
+## Worlds
+
+Three worlds across the Embergate, reached by walking to the standing arch by
+each spawn and pressing E:
+
+| World | Character | Shards | Ending |
+|---|---|---|---|
+| Aetherfall | the meadow isle | 7 | the classic re-weaving |
+| Embercrown | the autumn wastes | 6 | a dead king's last harvest |
+| Ashen Vale | the white silence | 5 | the waiting place wakes |
+
+Each recolors sky, water, terrain and fog via shader uniforms (no geometry is
+rebuilt, so the travel is cheap), swaps its lore steles and its finale.
+
+## Combat (fps-gated)
+
+Left click sweeps a sword at the Wraiths that drift toward you; they sap health
+on contact. The number that spawns is tied to the Vegetation Density slider
+tier (which the adaptive controller lowers automatically when fps falls):
+`0 -> 0, 1 -> 3, 2 -> 6, 3 -> 9, 4 -> 12`. On weak hardware the wraiths thin
+out or vanish entirely, and when off, no enemy mesh exists. Death draws you
+back to the spawn.
+
 ## The game
 
 Seven shards of the **Starlace** fell onto Aetherfall Isle. Each is marked by
