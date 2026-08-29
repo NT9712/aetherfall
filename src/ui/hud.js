@@ -89,6 +89,22 @@ export function createHUD() {
       </div>
     </div>
 
+    <div id="inventory" class="hidden"></div>
+    <div id="mission-line" class="hidden"></div>
+
+    <div id="mission-box" class="hidden">
+      <div class="mission-card">
+        <div class="mission-giver" id="mission-giver"></div>
+        <h2 id="mission-title"></h2>
+        <p id="mission-text"></p>
+        <div class="mission-actions">
+          <button id="btn-accept">Accept</button>
+          <button id="btn-turnin" class="hidden">Turn In</button>
+          <button id="btn-miss-close">Leave</button>
+        </div>
+      </div>
+    </div>
+
     <div id="perf">
       <div id="perf-fps"><b>--</b> fps</div>
       <div id="perf-cull"></div>
@@ -136,6 +152,7 @@ export function createHUD() {
   let toastTimer = null;
   let typeTimer = null;
   let onResume = null, onTitle = null, onMute = null, onWorld = null, onRevive = null;
+  let onAccept = null, onTurnIn = null;
   const TIER = ['Potato', 'Low', 'Medium', 'High', 'Ultra'];
   let onQuality = null;
   let onAuto = null;
@@ -154,6 +171,9 @@ export function createHUD() {
   $('btn-mute').addEventListener('click', () => { if (onMute) onMute(); });
   $('btn-title').addEventListener('click', () => { if (onTitle) onTitle(); });
   $('btn-revive').addEventListener('click', () => { if (onRevive) onRevive(); });
+  $('btn-accept').addEventListener('click', () => { if (onAccept) onAccept(); });
+  $('btn-turnin').addEventListener('click', () => { if (onTurnIn) onTurnIn(); });
+  $('btn-miss-close').addEventListener('click', () => $('mission-box').classList.add('hidden'));
 
   return {
     showTitle(onBegin) {
@@ -277,6 +297,34 @@ export function createHUD() {
       $('death').classList.remove('hidden');
     },
     hideDeath() { $('death').classList.add('hidden'); },
+
+    // ---- inventory + missions ----
+    onMissionAccept(fn) { onAccept = fn; },
+    onMissionTurnIn(fn) { onTurnIn = fn; },
+    setInventory(items) {
+      const strip = $('inventory');
+      if (!items.length) { strip.classList.add('hidden'); return; }
+      strip.classList.remove('hidden');
+      strip.innerHTML = items.map((i) =>
+        `<span class="inv-item" style="color:${i.color}">${i.glyph} ${i.n}</span>`).join('');
+    },
+    setMissionLine(text) {
+      const el = $('mission-line');
+      if (!text) { el.classList.add('hidden'); return; }
+      el.textContent = text;
+      el.classList.remove('hidden');
+    },
+    get missionOpen() { return !$('mission-box').classList.contains('hidden'); },
+    openMission(def, state) {
+      $('mission-giver').textContent = '❖ ' + def.giver;
+      $('mission-title').textContent = def.title;
+      $('mission-text').textContent = def.text;
+      $('btn-accept').classList.toggle('hidden', !state.canAccept);
+      $('btn-turnin').classList.toggle('hidden', !state.canTurnIn);
+      $('btn-turnin').textContent = 'Turn In' + (state.ready ? ' ✓' : '');
+      $('mission-box').classList.remove('hidden');
+    },
+    closeMission() { $('mission-box').classList.add('hidden'); },
 
     onQualityChange(fn) { onQuality = fn; },
     setAutoChecked(v) { $('set-auto').checked = v; },

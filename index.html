@@ -256,6 +256,46 @@
       border: 1px solid rgba(255,180,150,0.5); border-radius: 2px; cursor: pointer; transition: all .2s; }
     #btn-revive:hover { background: rgba(160,80,70,0.55); box-shadow: 0 0 22px rgba(255,150,120,0.3); }
 
+    /* ---------- inventory + missions ---------- */
+    #inventory {
+      position: absolute; bottom: 26px; left: 26px;
+      display: flex; gap: 8px; flex-wrap: wrap; max-width: 46vw;
+      font-family: 'Cinzel', serif; font-size: 15px;
+      background: rgba(10,20,34,0.4); border: 1px solid rgba(220,200,150,0.25);
+      border-radius: 3px; padding: 8px 12px;
+    }
+    .inv-item { text-shadow: 0 0 8px currentColor, 0 1px 3px #000; }
+    #mission-line {
+      position: absolute; top: 82px; left: 50%; transform: translateX(-50%);
+      font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.08em;
+      color: #ffe9b0; text-shadow: 0 1px 5px rgba(0,0,0,0.85);
+      background: rgba(10,20,34,0.45); border: 1px solid rgba(232,207,143,0.35);
+      border-radius: 2px; padding: 7px 16px; white-space: nowrap;
+    }
+    #mission-box {
+      position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%);
+      width: min(580px, calc(100vw - 48px)); pointer-events: auto;
+      background: linear-gradient(180deg, rgba(12,22,38,0.93), rgba(8,15,27,0.96));
+      border: 1px solid rgba(222,202,152,0.55); border-radius: 4px;
+      padding: 20px 26px 16px; backdrop-filter: blur(8px);
+      box-shadow: 0 10px 44px rgba(0,0,0,0.55);
+    }
+    .mission-giver { font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.16em;
+      color: #e8cf8f; margin-bottom: 8px; }
+    #mission-title { font-family: 'Cinzel', serif; font-size: 20px; letter-spacing: 0.08em; color: #f5ecd7; }
+    #mission-text { font-size: 15px; line-height: 1.65; color: #cfe0ef; margin: 10px 0 18px; white-space: pre-line; }
+    .mission-actions { display: flex; gap: 10px; }
+    .mission-actions button {
+      font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.14em;
+      padding: 10px 20px; color: #f5ecd7; cursor: pointer;
+      background: linear-gradient(180deg, rgba(64,96,138,0.32), rgba(30,50,78,0.32));
+      border: 1px solid rgba(232,207,143,0.5); border-radius: 2px; transition: all .2s;
+    }
+    .mission-actions button:hover { background: linear-gradient(180deg, rgba(94,132,182,0.5), rgba(44,70,106,0.5)); }
+    .mission-actions #btn-turnin { border-color: rgba(147,224,176,0.7); }
+    .mission-actions #btn-turnin:disabled { opacity: 0.45; pointer-events: none; }
+    .mission-actions #btn-miss-close { margin-left: auto; }
+
     /* ---------- perf + settings ---------- */
     #perf {
       position: absolute; top: 22px; left: 26px;

@@ -66,6 +66,24 @@ each spawn and pressing E:
 Each recolors sky, water, terrain and fog via shader uniforms (no geometry is
 rebuilt, so the travel is cheap), swaps its lore steles and its finale.
 
+## Items & missions
+
+Worlds are strewn with **wild items** — glowing flora, gathered just by walking
+past: Starlit Petals, Amber Coal, Frost Bells. Each world's Wraiths also drop a
+world essence (Moonlit Dust, Cinder Wisp, Quiet Ash). A small inventory strip in
+the corner keeps tally.
+
+Near each spawn stands a wandering merchant whose **mission** asks for a
+handful of wild items plus a few Wraith kills. Turning it in consumes the items
+and grants a **Mending Charm** — a permanent +40 max health that genuinely
+matters against the wraiths.
+
+```
+Cartwright's Charge (Aetherfall):  5 Starlit Petal + 2 Moonlit Dust + 2 kills
+Lampwright Otho's Fuel (Embercrown): 6 Amber Coal + 3 Cinder Wisp + 3 kills
+The Bell-Keeper's Claim (Ashen Vale): 6 Frost Bell + 2 Quiet Ash + 2 kills
+```
+
 ## Combat (fps-gated)
 
 Left click sweeps a sword at the Wraiths that drift toward you; they sap health
@@ -255,6 +273,8 @@ otherwise objects beside or behind the camera stop casting shadows into view.
 
 ```bash
 node tools/move-unit.mjs      # controller: directions, speed, bounds, glide
+node tools/mission-test.mjs   # inventory + mission logic
+node tools/items-game-test.mjs# item drop/gather/turn-in flow in-game
 node tools/pause-test.mjs     # pause: freeze, resume, finale interaction
 node tools/quality-test.mjs   # adaptive quality ladder behaviour
 node tools/verify-lean.mjs    # end-to-end: 7 shards, finale, no errors

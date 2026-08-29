@@ -9,6 +9,11 @@ import { createShards } from './world/shards.js';
 import { createStones } from './world/stones.js';
 import { createWorldProps } from './world/props.js';
 import { WORLDS, FINALE } from './data/worlds.js';
+import { ITEMS, dropItemFor } from './data/items.js';
+import { missionFor } from './data/missions.js';
+import { Inventory, Missions } from './player/missions.js';
+import { createWildItems } from './world/itemsProps.js';
+import { createTrader } from './world/trader.js';
 import { buildHeightTexture, heightAt, SUN_DIR, PALETTE } from './world/heightfield.js';
 import { createCharacter } from './player/character.js';
 import { Controller } from './player/controller.js';
@@ -87,6 +92,13 @@ const stones = createStones(scene);
 for (const st of stones.items) culler.add(st.group, st.x, st.z, 12);
 let propsState = createWorldProps(scene, WORLDS[0]);
 for (const gate of propsState.gates) culler.add(gate.group, gate.x, gate.z, 12);
+
+// Inventory + mission state (world-scoped).
+const inventory = new Inventory();
+let missions = new Missions(missionFor(WORLDS[0].id), inventory);
+let wildItems = createWildItems(scene, WORLDS[0]);
+let trader = createTrader(scene, WORLDS[0], makeWorldRng());
+let maxHp = 100;
 const shards = createShards(scene);
 const motes = createMotes(scene);
 const bursts = createBursts(scene);
@@ -101,6 +113,13 @@ const combat = new Combat(scene, {
   onDeath: () => {
     input.unlock();
     hud.showDeath();
+  },
+  onKill: () => {
+    missions.onKill();
+    const drop = dropItemFor(WORLDS[worldIndex].id);
+    inventory.add(drop, 1);
+    hud.toast(`+1 ${ITEMS[drop].name}`, 1400);
+    refreshInventory();
   },
 });
 // Provide a live player handle (position + facing) each update.
@@ -197,6 +216,13 @@ window.__capture = (n = 2) => {
   return renderer.domElement.toDataURL('image/png');
 };
 window.__hideWater = () => { water.mesh.visible = false; };
+window.__gameState = () => ({
+  inv: Object.fromEntries(inventory.amounts),
+  maxHp,
+  combatHp: combat.health,
+  mission: { hasActive: missions.hasActive, done: missions.done,
+             progress: missions.progress(), canAccept: missions.canAccept(), satisfied: missions.fulfilled() },
+});
 window.__worldInfo = () => ({
   index: worldIndex, id: WORLDS[worldIndex].id, name: WORLDS[worldIndex].name,
   shardLen: WORLDS[worldIndex].shards.length,
@@ -208,6 +234,19 @@ window.__worldInfo = () => ({
   player: [Math.round(controller.pos.x), Math.round(controller.pos.z)],
 });
 window.__jumpWorld = (i) => setWorld(i);
+window.__gift = (id, n) => { inventory.add(id, n); refreshInventory(); };
+window.__acceptMission = () => { const ok = missions.accept(); refreshMission(); return ok; };
+window.__kill = () => {
+  missions.onKill();
+  const drop = dropItemFor(WORLDS[worldIndex].id);
+  inventory.add(drop, 1);
+  refreshInventory();
+};
+window.__turnIn = () => {
+  const reward = missions.turnIn();
+  if (reward) { maxHp += reward.maxHp || 0; combat.health = maxHp; refreshInventory(); refreshMission(); }
+  return reward && { name: reward.name, maxHp };
+};
 window.__playerState = () => ({
   x: controller.pos.x, y: controller.pos.y, z: controller.pos.z,
   facing: controller.facing, grounded: controller.grounded,
@@ -231,11 +270,21 @@ window.__toggleShadows = (on) => { renderer.shadowMap.enabled = on; scene.traver
 input.onInteract = () => {
   if (!started) return;
   if (hud.dialogueOpen) { hud.closeDialogue(); return; }
+  if (hud.missionOpen) { hud.closeMission(); return; }
   if (hud.worldSelectOpen) { hud.closeWorldSelect(); return; }
-  // The Embergate takes priority: it is the door to other worlds.
+  // Embergate first: the door to other worlds.
   const gate = nearestGate();
   if (gate && Math.hypot(controller.pos.x - gate.x, controller.pos.z - gate.z) < 4.0) {
     hud.openWorldSelect(WORLDS, WORLDS[worldIndex].id);
+    return;
+  }
+  // Then the wandering merchant (missions).
+  if (Math.hypot(controller.pos.x - trader.x, controller.pos.z - trader.z) < 3.6) {
+    hud.openMission(missions.def, {
+      canAccept: missions.canAccept(),
+      canTurnIn: missions.fulfilled() && !!missions.active,
+      ready: missions.fulfilled(),
+    });
     return;
   }
   const st = stones.nearest(controller.pos);
@@ -250,6 +299,11 @@ function nearestGate() {
     if (d < bestD) { bestD = d; best = g; }
   }
   return best;
+}
+
+function makeWorldRng() {
+  let s = (WORLDS[worldIndex] ? WORLDS[worldIndex].id.length : 1) * 918273;
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
 }
 
 // ---------------------------------------------------------------- worlds
@@ -277,13 +331,26 @@ function setWorld(i) {
   combat.rebuild(w);
   combat.density = quality.levels[1];
 
+  // Rebuild world-scoped items + missions + trader.
+  for (const w of wildItems.items) scene.remove(w.group);
+  wildItems = createWildItems(scene, w);
+  scene.remove(trader.group);
+  trader = createTrader(scene, w, makeWorldRng());
+  missions.setWorld(missionFor(w.id));
+  missions.done = false;
+  inventory.amounts.clear();
+  maxHp = 100;
+  refreshInventory(); refreshMission();
+  hud.closeMission();
+
   // Rebuild world props (arch, fire, posts).
   for (const g of propsState.gates) scene.remove(g.group);
   for (const g of propsState.ambients) scene.remove(g.group);
   propsState = createWorldProps(scene, w);
   for (const gate of propsState.gates) culler.add(gate.group, gate.x, gate.z, 12);
 
-  // Move the player.
+  // Move the player and refill health.
+  combat.health = maxHp;
   controller.pos.set(w.spawn[0], heightAt(w.spawn[0], w.spawn[1]), w.spawn[1]);
   controller.vy = 0; controller.velH.set(0, 0);
 
@@ -338,6 +405,49 @@ window.addEventListener('keydown', (e) => {
   if (e.code !== 'Escape' || !started || finaleShown) return;
   e.preventDefault();
   setPaused(!paused);
+});
+
+function refreshInventory() {
+  const list = [...inventory.amounts.entries()].map(([id, n]) => {
+    const it = ITEMS[id];
+    return { glyph: it ? it.glyph : '?', color: it ? it.color : '#ffffff', n };
+  });
+  hud.setInventory(list);
+}
+function refreshMission() {
+  const pr = missions.progress();
+  if (pr && missions.active) {
+    const parts = Object.entries(pr).map(([k, v]) => {
+      const label = k === 'wraiths' ? 'Wraiths' : (ITEMS[k] ? ITEMS[k].name : k);
+      return `${label} ${v}`;
+    });
+    hud.setMissionLine(`${missions.active.title}  ·  ${parts.join('  ·  ')}`);
+  } else {
+    hud.setMissionLine(null);
+  }
+}
+
+hud.onMissionAccept(() => {
+  if (missions.accept()) { refreshMission(); hud.toast('Mission accepted', 1400); }
+  hud.closeMission();
+});
+hud.onMissionTurnIn(() => {
+  const reward = missions.turnIn();
+  if (reward) {
+    maxHp += reward.maxHp || 0;
+    combat.health = maxHp;
+    hud.toast(`${reward.name} — max health ${maxHp}`, 3200);
+    refreshInventory(); refreshMission();
+  }
+  hud.closeMission();
+});
+hud.onReviveClick(() => {
+  combat.resetHealth();
+  combat.health = maxHp;
+  hud.hideDeath();
+  controller.pos.set(WORLDS[worldIndex].spawn[0], heightAt(WORLDS[worldIndex].spawn[0], WORLDS[worldIndex].spawn[1]), WORLDS[worldIndex].spawn[1]);
+  controller.velH.set(0, 0); controller.vy = 0;
+  input.lock();
 });
 
 // Slider + adaptive wiring.
@@ -435,6 +545,14 @@ function tick() {
         hud.toast(`Shard recovered — ${need - shards.collectedCount} remaining`, 2400);
       }
     }
+
+    const pickedWild = wildItems.update(t, controller.pos);
+    if (pickedWild) {
+      inventory.add(pickedWild.itemId, 1);
+      hud.toast(`+1 ${ITEMS[pickedWild.itemId].name}`, 1400);
+      refreshInventory();
+    }
+    refreshMission();
 
     hud.setStamina(controller.stamina / 100);
     if (!hud.dialogueOpen && !hud.worldSelectOpen) {

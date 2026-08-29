@@ -31,10 +31,11 @@ function glowTexture() {
 }
 
 export class Combat {
-  constructor(scene, { getPlayer, onDeath, accent = 0x58c8f0 }) {
+  constructor(scene, { getPlayer, onDeath, onKill, accent = 0x58c8f0 }) {
     this.scene = scene;
     this.getPlayer = getPlayer;
     this.onDeath = onDeath;
+    this.onKill = onKill;
     this.accent = accent;
     this.rng = makeRng(2024);
     this.spawnTex = glowTexture();
@@ -172,7 +173,10 @@ export class Combat {
           // knock it back a touch
           e.x -= (dx / dist) * 1.6;
           e.z -= (dz / dist) * 1.6;
-          if (e.hp <= 0) { p.enabled = false; p.group.visible = false; }
+          if (e.hp <= 0) {
+            p.enabled = false; p.group.visible = false;
+            if (this.onKill) this.onKill(e, i);
+          }
         }
       }
     }
