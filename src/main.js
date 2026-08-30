@@ -49,6 +49,16 @@ document.getElementById('app').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 // Strong aerial perspective 2014 distance separation is a major depth cue.
 scene.fog = new THREE.Fog(PALETTE.fog, 40, 245);
+// The initial world must apply its palette immediately: otherwise the terrain
+// renders with its placeholder hexes instead of the intended look.
+(() => {
+  const p0 = WORLDS[0].palette;
+  sky.applyPalette(p0);
+  water.applyPalette(p0);
+  terrain.applyPalette(p0);
+  scene.fog.color.set(p0.fog);
+  PALETTE.fog.set(p0.fog);
+})();
 
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1600);
 
@@ -59,7 +69,7 @@ const sun = new THREE.DirectionalLight(PALETTE.sunColor, 2.0);
 sun.position.copy(SUN_DIR).multiplyScalar(120);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.radius = 2.2;
+sun.shadow.radius = 1.6;
 sun.shadow.camera.left = -46; sun.shadow.camera.right = 46;
 sun.shadow.camera.top = 46; sun.shadow.camera.bottom = -46;
 // Depth precision: the light sits 130u from the target, so a tight
@@ -67,7 +77,7 @@ sun.shadow.camera.top = 46; sun.shadow.camera.bottom = -46;
 // range here caused scene-wide self-shadow acne.
 sun.shadow.camera.near = 74; sun.shadow.camera.far = 196;
 sun.shadow.bias = -0.0006;
-sun.shadow.normalBias = 0.05;
+sun.shadow.normalBias = 0.022;
 sun.shadow.camera.updateProjectionMatrix();
 // Anything inside this radius of the player can cast into the shadow map, so
 // the culler must keep it drawable even when it is behind the camera.

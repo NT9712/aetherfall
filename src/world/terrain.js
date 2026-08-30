@@ -82,8 +82,8 @@ export function createTerrain(scene) {
           float hZ = fbm3((dp + vec2(0.0, e)) * 0.6);
           // Gentle: strong perturbation tips normals into the dark toon band
           // and both crushes overall luminance and kills shadow contrast.
-          vec3 detN = normalize(vec3(-(hX - hC) * 1.1, 1.0, -(hZ - hC) * 1.1));
-          float blend = 0.30 * (1.0 - smoothstep(45.0, 160.0, vViewPosition.z ));
+          vec3 detN = normalize(vec3(-(hX - hC) * 0.9, 1.0, -(hZ - hC) * 0.9));
+          float blend = 0.18 * (1.0 - smoothstep(45.0, 160.0, vViewPosition.z ));
           normal = normalize(mix(normal, normalize(normal + detN * 0.45), clamp(blend, 0.0, 0.30)));
         }
       `)
@@ -137,7 +137,7 @@ export function createTerrain(scene) {
           float midTuft = fbm3(vWorldPos.xz * 0.85);
           float fineTuft = vnoise(vWorldPos.xz * 3.1);
           float fineFade = 1.0 - smoothstep(22.0, 70.0, vViewPosition.z);
-          float tuft = (midTuft - 0.5) * 0.30 + (fineTuft - 0.5) * 0.26 * fineFade;
+          float tuft = (midTuft - 0.5) * 0.17 + (fineTuft - 0.5) * 0.13 * fineFade;
           albedo *= 1.0 + tuft * grassy;
           // Slight hue shift in the clumps so it isn't just brightness noise.
           albedo.g += tuft * 0.05 * grassy;
