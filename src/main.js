@@ -49,16 +49,6 @@ document.getElementById('app').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 // Strong aerial perspective 2014 distance separation is a major depth cue.
 scene.fog = new THREE.Fog(PALETTE.fog, 40, 245);
-// The initial world must apply its palette immediately: otherwise the terrain
-// renders with its placeholder hexes instead of the intended look.
-(() => {
-  const p0 = WORLDS[0].palette;
-  sky.applyPalette(p0);
-  water.applyPalette(p0);
-  terrain.applyPalette(p0);
-  scene.fog.color.set(p0.fog);
-  PALETTE.fog.set(p0.fog);
-})();
 
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1600);
 
@@ -95,6 +85,17 @@ const sky = createSky(scene);
 const clouds = createClouds(scene);
 const terrain = createTerrain(scene);
 const water = createWater(scene, heightTex);
+
+// Apply the initial world's palette now that sky/terrain/water exist.
+// (Running any earlier is a bug: the refs were still undefined.)
+{
+  const p0 = WORLDS[0].palette;
+  sky.applyPalette(p0);
+  water.applyPalette(p0);
+  terrain.applyPalette(p0);
+  scene.fog.color.set(p0.fog);
+  PALETTE.fog.set(p0.fog);
+}
 const culler = new CullingManager();
 const quality = new Quality({ onChange: (s) => applyQuality(s) });
 const vegetation = createVegetation(scene, heightTex, culler, quality.settings());
